@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
     } else if (!strcmp(arg, "-p") || !strcmp(arg, "--pedantic")) {
       pedantic_option = arg;
       can_not_combine(strict_option, pedantic_option);
-      can_not_combine(completed, pedantic_option);
+      can_not_combine(complete_option, pedantic_option);
       complete = true;
     } else if (!strcmp(arg, "-v") || !strcmp(arg, "--verbose")) {
       if (!verbose_option)
