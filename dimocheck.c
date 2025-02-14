@@ -444,8 +444,8 @@ static void parse_dimacs() {
         idx += digit;
       }
 
-      assert(lit <= maximum_variable_index);
       const int lit = sign * (int)idx;
+      assert(abs(lit) <= maximum_variable_index);
 
       if (strict && ch == EOF)
         srr(column, "end-of-file after literal '%d'", lit);
@@ -497,7 +497,7 @@ static void parse_model() {
     } else if (ch == 's') {
       if (next_char() != ' ')
         err(column, "expected space after 's'");
-      for (const char *p = "ATISFIABLE"; *p; p++)
+      for (const char *p = "SATISFIABLE"; *p; p++)
         if (next_char() != *p)
           err(token, "invalid status line (expected 's SATISFIABLE')");
       ch = next_char();
@@ -512,17 +512,18 @@ static void parse_model() {
       } else {
         while (is_space(ch) && ch != '\n')
           ch = next_char();
-        if (ch != EOF)
+        if (ch != '\n')
           err(column, "expected new-line after 's SATISFIABLE'");
       }
       msg("found 's SATISFIABLE' status line");
-    } else if (ch != 'v') {
+    } else if (ch == 'v') {
       int last_lit = INT_MIN;
     CONTINUE_WITH_V_LINES:
       if (next_char() != ' ')
         err(column, "expected space after 'v'");
       for (;;) {
         ch = next_char();
+  CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR:
 	token = column;
         if (ch == EOF)
           err(column, "end-of-file in 'v' line");
@@ -544,8 +545,7 @@ static void parse_model() {
           goto END_OF_V_LINE;
         } else {
 
-          int sign;
-
+          int sign = 1;
           if (ch == '-') {
             ch = next_char();
             if (strict && ch == '0')
@@ -570,8 +570,8 @@ static void parse_model() {
             idx += digit;
           }
 
-          assert(lit <= maximum_variable_index);
           const int lit = sign * (int)idx;
+          assert(abs (lit) <= maximum_variable_index);
 
           if (sign < 0 && !lit)
             err(token, "negative zero literal '-0'");
@@ -587,11 +587,17 @@ static void parse_model() {
               err(token, "two consecutive '0' in 'v' line");
           }
 
+	  if (verbosity > 1) {
+	    printf (PREFIX "parsed value literal '%d'\n", lit);
+	    fflush (stdout);
+	  }
+
           last_lit = lit;
+	  goto CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR;
         }
       }
     } else
-      err(column, "expected 'c', 's', or 'v' as first character");
+      err(column, "expected 'c', 's' or 'v' as first character");
   CONTINUE_OUTER_LOOP:;
   }
   reset_parsing();
@@ -600,7 +606,7 @@ static void parse_model() {
 }
 
 static void check_model() {
-  // TODO
+  msg ("checking model to satisfy DIMACS formula");
 }
 
 static void can_not_combine(const char *a, const char *b) {
