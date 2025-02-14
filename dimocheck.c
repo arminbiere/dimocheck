@@ -726,7 +726,9 @@ static void check_model() {
     msg("checking completeness of model (due to '%s')", complete_option);
     for (size_t idx = 1; idx <= (size_t)maximum_dimacs_variable; idx++)
       if (idx >= values.size || !values.begin[idx])
-        die("no value for for DIMACS variable '%zu' found", idx);
+        die("complete checking mode: "
+            "value for DIMACS variable '%zu' missing",
+            idx);
     msg("model complete (all DIMACS variables are assigned)");
   } else
     msg("partial model checking (without '--complete' nor '--pedantic')");
@@ -843,15 +845,15 @@ int main(int argc, char **argv) {
     free(*p);
   free(clauses.begin);
   free(values.begin);
-  fputs ("s MODEL_SATISFIES_FORMULA\n", stdout);
-  fflush (stdout);
+  fputs("s MODEL_SATISFIES_FORMULA\n", stdout);
+  fflush(stdout);
   size_t bytes = maximum_resident_set_size();
-  if (bytes >= 1u<<30)
+  if (bytes >= 1u << 30)
     msg("maximum resident-set size %.2f GB (%zu bytes)",
-	bytes / (double)(1u << 30), bytes);
+        bytes / (double)(1u << 30), bytes);
   else
     msg("maximum resident-set size %.2f MB (%zu bytes)",
-	bytes / (double)(1 << 20), bytes);
+        bytes / (double)(1 << 20), bytes);
   msg("total process-time %.2f seconds", process_time());
   return 0;
 }
