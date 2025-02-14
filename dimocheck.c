@@ -69,8 +69,10 @@ static void wrn(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void die(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void fatal(const char *, ...) __attribute__((format(printf, 1, 2)));
 
-static void err(size_t,const char *, ...) __attribute__((format(printf, 2, 3)));
-static void srr(size_t,const char *, ...) __attribute__((format(printf, 2, 3)));
+static void err(size_t, const char *, ...)
+    __attribute__((format(printf, 2, 3)));
+static void srr(size_t, const char *, ...)
+    __attribute__((format(printf, 2, 3)));
 
 static void msg(const char *fmt, ...) {
   if (verbosity < 0)
@@ -336,17 +338,18 @@ static void parse_dimacs() {
       specified_clauses += digit;
     }
     if (ch == EOF)
-      err(column, "unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
-          specified_clauses);
+      err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
+          specified_variables, specified_clauses);
     if (strict) {
       if (ch == '\r') {
         ch = next_char();
         if (ch != '\n')
-          srr(column, "expected new-line after carriage return after 'p cnf %zu %zu'",
+          srr(column,
+              "expected new-line after carriage return after 'p cnf %zu %zu'",
               specified_variables, specified_clauses);
       } else if (ch != '\n')
-        srr(column, "expected new-line after 'p cnf %zu %zu'", specified_variables,
-            specified_clauses);
+        srr(column, "expected new-line after 'p cnf %zu %zu'",
+            specified_variables, specified_clauses);
     } else {
       if (!is_space(ch))
         err(column, "expected space or new-line after 'p cnf %zu %zu'",
@@ -354,8 +357,8 @@ static void parse_dimacs() {
       while (is_space(ch) && ch != '\n')
         ch = next_char();
       if (ch == EOF)
-        err(column, "unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
-            specified_clauses);
+        err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
+            specified_variables, specified_clauses);
       if (ch != '\n')
         err(column, "expected new-line 'p cnf %zu %zu'", specified_variables,
             specified_clauses);
@@ -454,7 +457,8 @@ static void parse_dimacs() {
         err(column, "unexpected character after literal '%d'", lit);
 
       if (strict && specified_clauses == parsed_clauses)
-        srr(token, "too many clauses "
+        srr(token,
+            "too many clauses "
             "(start of clause %zu but only %zu specified)",
             parsed_clauses + 1, specified_clauses);
 
@@ -506,7 +510,7 @@ static void parse_model() {
           ch = next_char();
           if (ch != '\n')
             err(column, "expected new-line after carriage return after "
-                "'s SATISFIABLE'");
+                        "'s SATISFIABLE'");
         } else if (ch != '\n')
           err(column, "expected new-line after 's SATISFIABLE'");
       } else {
@@ -523,8 +527,8 @@ static void parse_model() {
         err(column, "expected space after 'v'");
       for (;;) {
         ch = next_char();
-  CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR:
-	token = column;
+      CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR:
+        token = column;
         if (ch == EOF)
           err(column, "end-of-file in 'v' line");
         else if (ch == ' ' || ch == '\t')
@@ -571,14 +575,14 @@ static void parse_model() {
           }
 
           const int lit = sign * (int)idx;
-          assert(abs (lit) <= maximum_variable_index);
+          assert(abs(lit) <= maximum_variable_index);
 
           if (sign < 0 && !lit)
             err(token, "negative zero literal '-0'");
 
           if (strict && idx > maximum_dimacs_variable)
-            srr(token, "literal '%d' exceeds maximum DIMACS variable '%zu'", lit,
-                maximum_dimacs_variable);
+            srr(token, "literal '%d' exceeds maximum DIMACS variable '%zu'",
+                lit, maximum_dimacs_variable);
 
           if (!last_lit) {
             if (lit)
@@ -587,13 +591,22 @@ static void parse_model() {
               err(token, "two consecutive '0' in 'v' line");
           }
 
-	  if (verbosity > 1) {
-	    printf (PREFIX "parsed value literal '%d'\n", lit);
-	    fflush (stdout);
-	  }
+          if (verbosity > 1) {
+            if (lit)
+              printf(PREFIX "parsed value literal '%d'\n", lit);
+            else
+              printf(PREFIX "parsed terminating zero '0'\n");
+            fflush(stdout);
+          }
+
+          if (idx) {
+            parsed_values++;
+            if (idx > maximum_model_variable)
+              maximum_model_variable = idx;
+          }
 
           last_lit = lit;
-	  goto CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR;
+          goto CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR;
         }
       }
     } else
@@ -605,9 +618,7 @@ static void parse_model() {
       maximum_model_variable);
 }
 
-static void check_model() {
-  msg ("checking model to satisfy DIMACS formula");
-}
+static void check_model() { msg("checking model to satisfy DIMACS formula"); }
 
 static void can_not_combine(const char *a, const char *b) {
   if (a && b)
