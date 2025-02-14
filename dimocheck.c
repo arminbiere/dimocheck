@@ -41,6 +41,7 @@ static const char *dimacs_path;
 static const char *model_path;
 
 static FILE *file;
+static int close_file;
 static size_t lineno;
 static size_t column;
 static size_t charno;
@@ -247,8 +248,35 @@ static void fit_values(size_t idx) {
   }
 }
 
+static bool has_suffix(const char *p, const char *q) {
+  size_t k = strlen(p), l = strlen(q);
+  return k >= l && !strcmp(p + k - l, q);
+}
+
+static FILE *read_zipped(const char *zipper, const char *p) {
+  size_t len = strlen (p) + 32;
+  char *cmd = malloc(len);
+  if (!cmd)
+    fatal("out-of-memory allocating unzipping command");
+  snprintf(cmd, len, "%s -c -d %s", zipper, p);
+  FILE *file = popen(cmd, "r");
+  free(cmd);
+  return file;
+}
+
 static void init_parsing(const char *p) {
-  if (!(file = fopen(path = p, "r")))
+  close_file = 2;
+  if (has_suffix(p, ".bz2"))
+    file = read_zipped("bunzip2", p);
+  else if (has_suffix(p, ".gz"))
+    file = read_zipped("gunzip", p);
+  else if (has_suffix(p, ".xz"))
+    file = read_zipped("xz", p);
+  else {
+    file = fopen(path = p, "r");
+    close_file = 1;
+  }
+  if (!file)
     die("can not open and read '%s'", path);
   last_char[0] = last_char[1] = EOF;
   lineno = 1;
@@ -258,7 +286,10 @@ static void init_parsing(const char *p) {
 
 static void reset_parsing() {
   vrb("closing '%s'", path);
-  fclose(file);
+  if (close_file == 1)
+    fclose(file);
+  if (close_file == 2)
+    pclose(file);
 }
 
 static int next_char() {
@@ -507,7 +538,7 @@ static void parse_dimacs() {
     }
   }
   reset_parsing();
-  msg("parsed %zu clauses with maximum variable %d", parsed_clauses,
+  msg("parsed %zu clauses with maximum variable index '%d'", parsed_clauses,
       maximum_dimacs_variable);
 }
 
