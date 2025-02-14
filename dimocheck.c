@@ -21,6 +21,8 @@ static const char * usage =
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/resource.h>
+
 #define PREFIX "[dimocheck] "
 
 static int verbosity;
@@ -254,7 +256,7 @@ static bool has_suffix(const char *p, const char *q) {
 }
 
 static FILE *read_zipped(const char *zipper, const char *p) {
-  size_t len = strlen (p) + 32;
+  size_t len = strlen(p) + 32;
   char *cmd = malloc(len);
   if (!cmd)
     fatal("out-of-memory allocating unzipping command");
@@ -586,13 +588,13 @@ static void parse_model() {
       found_status_line = true;
     } else if (ch == 'v') {
       if (!reported_on_status_line_found) {
-	if (!found_status_line) {
-	  if (strict)
-	    srr (column, "'v' line without 's SATISFIABLE' status line");
-	  else
-	    wrn ("'v' line without 's SATISFIABLE' status line");
-	}
-	reported_on_status_line_found = true;
+        if (!found_status_line) {
+          if (strict)
+            srr(column, "'v' line without 's SATISFIABLE' status line");
+          else
+            wrn("'v' line without 's SATISFIABLE' status line");
+        }
+        reported_on_status_line_found = true;
       }
       int last_lit = INT_MIN;
     CONTINUE_WITH_V_LINES:
@@ -761,6 +763,28 @@ static void can_not_combine(const char *a, const char *b) {
     die("can not combine '%s' and '%s' (try '-h')", a, b);
 }
 
+size_t maximum_resident_set_size() {
+  size_t res = 0;
+  struct rusage u;
+  if (!getrusage(RUSAGE_SELF, &u)) {
+    res = (size_t)u.ru_maxrss;
+#ifndef __APPLE__
+    res <<= 10;
+#endif
+  }
+  return res;
+}
+
+static double process_time() {
+  double res = 0;
+  struct rusage u;
+  if (!getrusage(RUSAGE_SELF, &u)) {
+    res = u.ru_utime.tv_sec + 1e-6 * u.ru_utime.tv_usec;
+    res += u.ru_stime.tv_sec + 1e-6 * u.ru_stime.tv_usec;
+  }
+  return res;
+}
+
 int main(int argc, char **argv) {
   const char *pedantic_option = 0;
   const char *verbose_option = 0;
@@ -819,5 +843,13 @@ int main(int argc, char **argv) {
     free(*p);
   free(clauses.begin);
   free(values.begin);
+  size_t bytes = maximum_resident_set_size();
+  if (bytes >= 1u<<30)
+    msg("maximum resident-set size %.2f GB (%zu bytes)",
+	bytes / (double)(1u << 30), bytes);
+  else
+    msg("maximum resident-set size %.2f MB (%zu bytes)",
+	bytes / (double)(1 << 20), bytes);
+  msg("total process-time %.2f seconds", process_time());
   return 0;
 }
