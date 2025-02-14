@@ -14,6 +14,7 @@ static const char * usage =
 #include "config.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -26,6 +27,9 @@ static int verbosity;
 static bool complete;
 static bool strict;
 
+static const char *strict_option;
+static const char *complete_option;
+
 struct clause {
   size_t lineno;
   size_t size;
@@ -37,6 +41,7 @@ static const char *model_path;
 
 static FILE *file;
 static size_t lineno;
+static size_t charno;
 static const char *path;
 static int last_char;
 
@@ -107,7 +112,8 @@ static void fatal(const char *fmt, ...) {
 }
 
 static void err(const char *fmt, ...) {
-  fprintf(stderr, "%s:%zu: parse error: ", path, lineno);
+  assert(last_char != '\n' || lineno > 1);
+  fprintf(stderr, "%s:%zu: parse error: ", path, lineno - (last_char == '\n'));
   va_list ap;
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -190,13 +196,139 @@ static void push_clause(size_t lineno) {
 static void init_parsing(const char *p) {
   if (!(file = fopen(path = p, "r")))
     die("can not open and read '%s'", path);
-  last_char = 0;
+  last_char = EOF;
   lineno = 1;
+  charno = 0;
 }
 
-static void parse_dimacs() { init_parsing(dimacs_path); }
+static void reset_parsing() {
+  vrb("closing '%s'", path);
+  fclose(file);
+}
 
-static void parse_model() { init_parsing(model_path); }
+static int next_char() {
+  int res = getc(file);
+  if (res == '\n')
+    lineno++;
+  if (res != EOF)
+    charno++;
+  return last_char = res;
+}
+
+static bool is_space(int ch) {
+  return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+}
+
+static bool is_digit(int ch) { return '0' <= ch && ch <= '9'; }
+
+static void parse_dimacs() {
+  init_parsing(dimacs_path);
+  msg("parsing DIMACS '%s'", path);
+  if (strict) {
+    assert(strict_option);
+    msg("parsing in strict mode (due to '%s')", strict_option);
+  } else
+    msg("parsing in relaxed mode (use '--strict' or '--pedantic')");
+  for (;;) {
+    int ch = next_char();
+    if (ch == EOF) {
+      if (charno)
+        err("end-of-file before header (truncated file)");
+      else
+        err("end-of-file before header (empty file)");
+    } else if (is_space(ch)) {
+      if (strict)
+        err("expected 'c' or 'p' at start of line before header");
+    } else if (ch == 'c') {
+      while ((ch = next_char()) != '\n')
+        if (ch == EOF)
+          err("end-of-file in header comment");
+      continue;
+    } else if (ch == 'p')
+      break;
+    else
+      err("unexpected character (expected 'p')");
+  }
+  if (next_char() != ' ')
+    err("expected space after 'p'");
+  if (next_char() != 'c')
+    err("expected 'c' after 'p '");
+  if (next_char() != 'n')
+    err("expected 'n' after 'p c'");
+  if (next_char() != 'f')
+    err("expected 'f' after 'p cn'");
+  if (next_char() != ' ')
+    err("expected space after 'p cnf'");
+  size_t specified_variables;
+  {
+    int ch = next_char();
+    if (!is_digit(ch))
+      err("expected digit after 'p cnf '");
+    const size_t maximum_variables_limit = INT_MAX;
+    specified_variables = ch - '0';
+    while (is_digit(ch = next_char())) {
+      if (maximum_variables_limit / 10 < specified_variables)
+        err("maximum variable limit exceeded");
+      specified_variables *= 10;
+      unsigned digit = ch - '0';
+      if (maximum_variables_limit - digit < specified_variables)
+        err("maximum variable limit exceeded");
+      specified_variables += digit;
+    }
+    if (ch != ' ')
+      err("expected space after 'p cnf %zu'", specified_variables);
+  }
+  size_t specified_clauses;
+  {
+    int ch = next_char();
+    if (!is_digit(ch))
+      err("expected digit after 'p cnf %zu '", specified_variables);
+    const size_t maximum_clauses_limit = ~(size_t)0;
+    specified_clauses = ch - '0';
+    while (is_digit(ch = next_char())) {
+      if (maximum_clauses_limit / 10 < specified_clauses)
+        err("maximum clauses limit exceeded");
+      specified_clauses *= 10;
+      unsigned digit = ch - '0';
+      if (maximum_clauses_limit - digit < specified_clauses)
+        err("maximum clauses limit exceeded");
+      specified_clauses += digit;
+    }
+    if (ch == EOF)
+      err("unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
+          specified_clauses);
+    if (strict) {
+      if (ch == '\r') {
+        ch = next_char();
+        if (ch != '\n')
+          err("expected new-line after carriage return after 'p cnf %zu %zu'",
+              specified_variables, specified_clauses);
+      } else if (ch != '\n')
+        err("expected new-line after 'p cnf %zu %zu'", specified_variables,
+            specified_clauses);
+    } else {
+      if (!is_space(ch))
+        err("expected space or new-line after 'p cnf %zu %zu'",
+            specified_variables, specified_clauses);
+      while (is_space(ch) && ch != '\n')
+        ch = next_char();
+      if (ch == EOF)
+        err("unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
+            specified_clauses);
+      if (ch != '\n')
+        err("expected new-line 'p cnf %zu %zu'", specified_variables,
+            specified_clauses);
+    }
+  }
+  msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
+  reset_parsing();
+}
+
+static void parse_model() {
+  init_parsing(model_path);
+  msg("parsing model '%s'", path);
+  reset_parsing();
+}
 
 static void check_model() {
   // TODO
@@ -208,8 +340,6 @@ static void can_not_combine(const char *a, const char *b) {
 }
 
 int main(int argc, char **argv) {
-  const char *strict_option = 0;
-  const char *complete_option = 0;
   const char *pedantic_option = 0;
   const char *verbose_option = 0;
   const char *quiet_option = 0;
@@ -230,7 +360,8 @@ int main(int argc, char **argv) {
       pedantic_option = arg;
       can_not_combine(strict_option, pedantic_option);
       can_not_combine(complete_option, pedantic_option);
-      complete = true;
+      strict_option = complete_option = pedantic_option;
+      strict = complete = true;
     } else if (!strcmp(arg, "-v") || !strcmp(arg, "--verbose")) {
       if (!verbose_option)
         verbose_option = arg;
@@ -255,7 +386,7 @@ int main(int argc, char **argv) {
     die("model file missing (try '-h')");
   msg("DiMoCheck DIMACS Model Checker");
   msg("Version %s", VERSION);
-  msg("Compiled '%s", COMPILE);
+  msg("Compiled with '%s'", COMPILE);
   parse_dimacs();
   parse_model();
   check_model();
