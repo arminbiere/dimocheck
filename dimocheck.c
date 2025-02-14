@@ -551,6 +551,7 @@ static void parse_model() {
   } else
     msg("parsing in relaxed mode (without '--strict' nor '--pedantic')");
   size_t parsed_values = 0, positive_values = 0, negative_values = 0;
+  bool found_status_line = false, reported_on_status_line_found = false;
   for (;;) {
     int ch = next_char();
     size_t token = column;
@@ -582,7 +583,17 @@ static void parse_model() {
           err(column, "expected new-line after 's SATISFIABLE'");
       }
       msg("found 's SATISFIABLE' status line");
+      found_status_line = true;
     } else if (ch == 'v') {
+      if (!reported_on_status_line_found) {
+	if (!found_status_line) {
+	  if (strict)
+	    srr (column, "'v' line without 's SATISFIABLE' status line");
+	  else
+	    wrn ("'v' line without 's SATISFIABLE' status line");
+	}
+	reported_on_status_line_found = true;
+      }
       int last_lit = INT_MIN;
     CONTINUE_WITH_V_LINES:
       if (next_char() != ' ')

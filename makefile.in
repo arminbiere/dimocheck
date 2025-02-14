@@ -5,6 +5,6 @@ clean:
 	rm -f dimocheck
 format:
 	clang-format -i dimocheck.c
-test:
-	@echo 'not tests yet'; exit 1
+test: dimocheck
+	+make -C test
 .PHONY: all clean test
