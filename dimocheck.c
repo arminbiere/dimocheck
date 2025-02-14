@@ -18,16 +18,26 @@ static const char * usage =
 #include <stdlib.h>
 #include <string.h>
 
-struct stack {
-  int *begin, *end, *allocated;
-};
-
 static int verbosity;
 static bool complete;
 static bool strict;
 
+struct clause {
+  size_t lineno;
+  size_t size;
+  int literals[];
+};
+
 static const char *dimacs_path;
 static const char *model_path;
+
+struct {
+  size_t size;
+} variables;
+
+struct {
+  int *begin, *end, *allocated;
+} literals;
 
 static void msg(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void vrb(const char *, ...) __attribute__((format(printf, 1, 2)));
@@ -78,6 +88,12 @@ static void fatal(const char *fmt, ...) {
   fputc('\n', stderr);
   abort();
   exit(1);
+}
+
+static void enlarge_clause() {}
+
+static void push_literal (int lit) {
+  assert (lit);
 }
 
 static void can_not_combine(const char *a, const char *b) {
@@ -132,5 +148,7 @@ int main(int argc, char **argv) {
   if (!model_path)
     die("model file missing (try '-h')");
   msg("DiMoCheck DIMACS Model Checker");
+  msg("Version %s", VERSION);
+  msg("Compiled '%s", COMPILED);
   return 0;
 }

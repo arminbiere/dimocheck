@@ -21,6 +21,9 @@ do
   esac
   shift
 done
+VERSION="`cat VERSION`"
+[ -d .git ] && VERSION="$VERSION `git rev-parse HEAD 2>/dev/null`"
+msg "Version '$VERSION'"
 COMPILE="gcc -Wall"
 if [ $debug = yes ]
 then
@@ -29,6 +32,13 @@ else
   COMPILE="$COMPILE -O3 -DNDEBUG"
 fi
 msg "Compiling with '$COMPILE'"
+rm -f config.h
+cat<<EOF>config.h
+#define VERSION "$VERSION"
+#define COMPILE "$COMPILE"
+EOF
+msg "Generated 'config.h'"
 rm -f makefile
 sed -e "s#@COMPILE@#$COMPILE#" makefile.in > makefile
-msg "Generated 'makefile' (run 'make' or 'make test')"
+msg "Generated 'makefile'"
+msg "run 'make'"
