@@ -3,6 +3,8 @@ dimocheck: dimocheck.c makefile
 	@COMPILE@ -o $@ $<
 clean:
 	rm -f dimocheck
+format:
+	clang-format -i dimocheck.c
 test:
 	@echo 'not tests yet'; exit 1
 .PHONY: all clean test
