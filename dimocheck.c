@@ -32,6 +32,7 @@ static const char *complete_option;
 
 struct clause {
   size_t lineno;
+  size_t column;
   size_t size;
   int literals[];
 };
@@ -44,10 +45,10 @@ static size_t lineno;
 static size_t column;
 static size_t charno;
 static const char *path;
-static int last_char;
+static int last_char[2];
 
-static size_t maximum_dimacs_variable;
-static size_t maximum_model_variable;
+static int maximum_dimacs_variable;
+static int maximum_model_variable;
 static size_t parsed_clauses;
 
 static struct {
@@ -59,7 +60,8 @@ static struct {
 } clauses;
 
 static struct {
-  signed char *begin, *end, *allocated;
+  int *begin;
+  size_t size, capacity;
 } values;
 
 static void msg(const char *, ...) __attribute__((format(printf, 1, 2)));
@@ -132,9 +134,9 @@ static void fatal(const char *fmt, ...) {
 }
 
 static void err(size_t token, const char *fmt, ...) {
-  assert(last_char != '\n' || lineno > 1);
+  assert(last_char[0] != '\n' || lineno > 1);
   fprintf(stderr, "%s:%zu:%zu: parse error: ", path,
-          lineno - (last_char == '\n'), token);
+          lineno - (last_char[0] == '\n'), token);
   va_list ap;
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -144,9 +146,9 @@ static void err(size_t token, const char *fmt, ...) {
 }
 
 static void srr(size_t token, const char *fmt, ...) {
-  assert(last_char != '\n' || lineno > 1);
+  assert(last_char[0] != '\n' || lineno > 1);
   fprintf(stderr, "%s:%zu:%zu: strict parsing error: ", path,
-          lineno - (last_char == '\n'), token);
+          lineno - (last_char[0] == '\n'), token);
   va_list ap;
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -203,14 +205,15 @@ static size_t bytes_clause(size_t size) {
   return sizeof(struct clause) + size * sizeof(int);
 }
 
-static void push_clause(size_t lineno) {
+static void push_clause(size_t lineno, size_t column) {
   size_t size = size_literals();
   size_t bytes = bytes_clause(size);
   struct clause *clause = malloc(bytes);
   if (!clause)
     fatal("out-of-memory allocating clause");
   clause->size = size;
-  clause->lineno = size;
+  clause->lineno = lineno;
+  clause->column = column;
   size_t bytes_literals = size * sizeof(int);
   memcpy(clause->literals, literals.begin, bytes_literals);
   if (full_clauses())
@@ -226,10 +229,28 @@ static void push_clause(size_t lineno) {
   }
 }
 
+static void fit_values(size_t idx) {
+  assert(idx <= (size_t)INT_MAX);
+  const size_t old_capacity = values.capacity;
+  if (idx >= old_capacity) {
+    size_t new_capacity = old_capacity ? 2 * old_capacity : 1;
+    while (idx >= new_capacity)
+      new_capacity *= 2;
+    values.begin = realloc(values.begin, new_capacity * sizeof *values.begin);
+    if (!values.begin)
+      fatal("out-of-memory reallocating value array");
+    values.capacity = new_capacity;
+  }
+  while (idx >= values.size) {
+    assert(values.size < values.capacity);
+    values.begin[values.size++] = 0;
+  }
+}
+
 static void init_parsing(const char *p) {
   if (!(file = fopen(path = p, "r")))
     die("can not open and read '%s'", path);
-  last_char = EOF;
+  last_char[0] = last_char[1] = EOF;
   lineno = 1;
   column = 0;
   charno = 0;
@@ -245,13 +266,15 @@ static int next_char() {
   if (res == '\n')
     lineno++;
   if (res != EOF) {
-    if (last_char == '\n')
+    if (last_char[0] == '\n')
       column = 1;
     else
       column++;
     charno++;
   }
-  return last_char = res;
+  last_char[1] = last_char[0];
+  last_char[0] = res;
+  return res;
 }
 
 static bool is_space(int ch) {
@@ -267,7 +290,7 @@ static void parse_dimacs() {
     assert(strict_option);
     msg("parsing in strict mode (due to '%s')", strict_option);
   } else
-    msg("parsing in relaxed mode (use '--strict' or '--pedantic')");
+    msg("parsing in relaxed mode (without '--strict' nor '--pedantic')");
   for (;;) {
     int ch = next_char();
     if (ch == EOF) {
@@ -365,11 +388,11 @@ static void parse_dimacs() {
     }
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
-  size_t parsed_clauses = 0;
   {
     int last_lit = 0;
     int ch = next_char();
-    size_t start = lineno;
+    size_t clause_lineno = lineno;
+    size_t clause_column = column;
     for (;;) {
 
       size_t token = column;
@@ -377,7 +400,7 @@ static void parse_dimacs() {
       if (ch == EOF) {
         if (last_lit)
           err(column, "terminating zero missing in last clause");
-        if (last_char != '\n') {
+        if (last_char[1] != '\n') {
           if (strict)
             srr(column, "new-line missing after last clause");
           else
@@ -419,8 +442,10 @@ static void parse_dimacs() {
         continue;
       }
 
-      if (!last_lit)
-        start = lineno;
+      if (!last_lit) {
+        clause_lineno = lineno;
+        clause_column = column;
+      }
 
       int sign = 1;
       if (ch == '-') {
@@ -475,20 +500,26 @@ static void parse_dimacs() {
           maximum_dimacs_variable = idx;
       } else {
         parsed_clauses++;
-        push_clause(start);
+        push_clause(clause_lineno, clause_column);
         clear_literals();
       }
+      last_lit = lit;
     }
   }
   reset_parsing();
-  msg("parsed %zu clauses with maximum variable %zu", parsed_clauses,
+  msg("parsed %zu clauses with maximum variable %d", parsed_clauses,
       maximum_dimacs_variable);
 }
 
 static void parse_model() {
   init_parsing(model_path);
   msg("parsing model '%s'", path);
-  size_t parsed_values = 0;
+  if (strict) {
+    assert(strict_option);
+    msg("parsing in strict mode (due to '%s')", strict_option);
+  } else
+    msg("parsing in relaxed mode (without '--strict' nor '--pedantic')");
+  size_t parsed_values = 0, positive_values = 0, negative_values = 0;
   for (;;) {
     int ch = next_char();
     size_t token = column;
@@ -581,8 +612,8 @@ static void parse_model() {
             err(token, "negative zero literal '-0'");
 
           if (strict && idx > maximum_dimacs_variable)
-            srr(token, "literal '%d' exceeds maximum DIMACS variable '%zu'",
-                lit, maximum_dimacs_variable);
+            srr(token, "literal '%d' exceeds maximum DIMACS variable '%d'", lit,
+                maximum_dimacs_variable);
 
           if (!last_lit) {
             if (lit)
@@ -605,6 +636,31 @@ static void parse_model() {
               maximum_model_variable = idx;
           }
 
+          if (idx >= values.size)
+            fit_values(idx);
+
+          assert(idx <= (size_t)INT_MAX);
+          const int old_value = values.begin[idx];
+          const int new_value = lit;
+
+          if (old_value && old_value != new_value)
+            err(token, "old value '%d' overwritten by new value '%d'",
+                old_value, new_value);
+
+          if (strict && old_value) {
+            assert(old_value == new_value);
+            srr(token, "value '%d' set twice", new_value);
+          }
+
+          if (old_value != new_value) {
+            if (new_value < 0)
+              negative_values++;
+            else
+              positive_values++;
+          }
+
+          values.begin[idx] = new_value;
+
           last_lit = lit;
           goto CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR;
         }
@@ -614,11 +670,49 @@ static void parse_model() {
   CONTINUE_OUTER_LOOP:;
   }
   reset_parsing();
-  msg("parsed values of %zu variables with maximum index '%zu'", parsed_values,
+  msg("parsed values of %zu variables with maximum index '%d'", parsed_values,
       maximum_model_variable);
+  msg("set %zu positive and %zu negative values", positive_values,
+      negative_values);
 }
 
-static void check_model() { msg("checking model to satisfy DIMACS formula"); }
+static void check_model() {
+  msg("checking model to satisfy DIMACS formula");
+  if (complete) {
+    msg("checking completeness of model (due to '%s')", complete_option);
+    for (size_t idx = 1; idx <= (size_t)maximum_dimacs_variable; idx++)
+      if (idx >= values.size || !values.begin[idx])
+        die("no value for for DIMACS variable '%zu' found", idx);
+    msg("model complete (all DIMACS variables are assigned)");
+  } else
+    msg("partial model checking (without '--complete' nor '--pedantic')");
+  for (struct clause **p = clauses.begin; p != clauses.end; p++) {
+    const struct clause *c = *p;
+    const int *q = c->literals, *end_literals = q + c->size;
+    bool satisfied = false;
+    while (!satisfied && q != end_literals) {
+      const int lit = *q++;
+      assert(lit != INT_MIN);
+      const size_t idx = abs(lit);
+      if (idx >= values.size)
+        continue;
+      int value = values.begin[idx];
+      if (value == lit)
+        satisfied = true;
+    }
+    if (satisfied)
+      continue;
+    fprintf(stderr, "%s:%zu:%zu: fatal error: clause[%zu] unsatisfied:\n",
+            dimacs_path, c->lineno, c->column, p - clauses.begin + 1);
+    for (q = c->literals; q != end_literals; q++)
+      fprintf (stderr, "%d ", *q);
+    fputs ("0\n", stderr);
+    fflush(stderr);
+    abort();
+    exit(1);
+  }
+  msg("checked all %zu clauses to be satisfied by model", parsed_clauses);
+}
 
 static void can_not_combine(const char *a, const char *b) {
   if (a && b)
@@ -672,6 +766,7 @@ int main(int argc, char **argv) {
   if (!model_path)
     die("model file missing (try '-h')");
   msg("DiMoCheck DIMACS Model Checker");
+  msg("Copyright (c) 2025, Armin Biere, University of Freiburg");
   msg("Version %s", VERSION);
   msg("Compiled with '%s'", COMPILE);
   parse_dimacs();
