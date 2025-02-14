@@ -41,21 +41,26 @@ static const char *model_path;
 
 static FILE *file;
 static size_t lineno;
+static size_t column;
 static size_t charno;
 static const char *path;
 static int last_char;
 
-static size_t maximum_variable;
-static signed char *values;
+static size_t maximum_dimacs_variable;
+static size_t maximum_model_variable;
 static size_t parsed_clauses;
 
-struct {
+static struct {
   int *begin, *end, *allocated;
 } literals;
 
-struct {
+static struct {
   struct clause **begin, **end, **allocated;
 } clauses;
+
+static struct {
+  signed char *begin, *end, *allocated;
+} values;
 
 static void msg(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void vrb(const char *, ...) __attribute__((format(printf, 1, 2)));
@@ -64,7 +69,8 @@ static void wrn(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void die(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void fatal(const char *, ...) __attribute__((format(printf, 1, 2)));
 
-static void err(const char *, ...) __attribute__((format(printf, 1, 2)));
+static void err(size_t,const char *, ...) __attribute__((format(printf, 2, 3)));
+static void srr(size_t,const char *, ...) __attribute__((format(printf, 2, 3)));
 
 static void msg(const char *fmt, ...) {
   if (verbosity < 0)
@@ -123,9 +129,22 @@ static void fatal(const char *fmt, ...) {
   exit(1);
 }
 
-static void err(const char *fmt, ...) {
+static void err(size_t token, const char *fmt, ...) {
   assert(last_char != '\n' || lineno > 1);
-  fprintf(stderr, "%s:%zu: parse error: ", path, lineno - (last_char == '\n'));
+  fprintf(stderr, "%s:%zu:%zu: parse error: ", path,
+          lineno - (last_char == '\n'), token);
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fputc('\n', stderr);
+  exit(1);
+}
+
+static void srr(size_t token, const char *fmt, ...) {
+  assert(last_char != '\n' || lineno > 1);
+  fprintf(stderr, "%s:%zu:%zu: strict parsing error: ", path,
+          lineno - (last_char == '\n'), token);
   va_list ap;
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -200,7 +219,7 @@ static void push_clause(size_t lineno) {
     const int *p = clause->literals, *end = p + size;
     while (p != end)
       printf(" %d", *p++);
-    fputc ('\n', stdout);
+    fputc('\n', stdout);
     fflush(stdout);
   }
 }
@@ -210,6 +229,7 @@ static void init_parsing(const char *p) {
     die("can not open and read '%s'", path);
   last_char = EOF;
   lineno = 1;
+  column = 0;
   charno = 0;
 }
 
@@ -222,8 +242,13 @@ static int next_char() {
   int res = getc(file);
   if (res == '\n')
     lineno++;
-  if (res != EOF)
+  if (res != EOF) {
+    if (last_char == '\n')
+      column = 1;
+    else
+      column++;
     charno++;
+  }
   return last_char = res;
 }
 
@@ -245,94 +270,94 @@ static void parse_dimacs() {
     int ch = next_char();
     if (ch == EOF) {
       if (charno)
-        err("end-of-file before header (truncated file)");
+        err(column, "end-of-file before header (truncated file)");
       else
-        err("end-of-file before header (empty file)");
+        err(column, "end-of-file before header (empty file)");
     } else if (is_space(ch)) {
       if (strict)
-        err("expected 'c' or 'p' at start of line before header");
+        srr(column, "expected 'c' or 'p' at start of line before header");
     } else if (ch == 'c') {
       while ((ch = next_char()) != '\n')
         if (ch == EOF)
-          err("end-of-file in header comment");
+          err(column, "end-of-file in header comment");
       continue;
     } else if (ch == 'p')
       break;
     else
-      err("unexpected character (expected 'p')");
+      err(column, "unexpected character (expected 'p')");
   }
   if (next_char() != ' ')
-    err("expected space after 'p'");
+    err(column, "expected space after 'p'");
   if (next_char() != 'c')
-    err("expected 'c' after 'p '");
+    err(column, "expected 'c' after 'p '");
   if (next_char() != 'n')
-    err("expected 'n' after 'p c'");
+    err(column, "expected 'n' after 'p c'");
   if (next_char() != 'f')
-    err("expected 'f' after 'p cn'");
+    err(column, "expected 'f' after 'p cn'");
   if (next_char() != ' ')
-    err("expected space after 'p cnf'");
+    err(column, "expected space after 'p cnf'");
   size_t specified_variables;
   {
     int ch = next_char();
     if (!is_digit(ch))
-      err("expected digit after 'p cnf '");
+      err(column, "expected digit after 'p cnf '");
     const size_t maximum_variables_limit = INT_MAX;
     specified_variables = ch - '0';
     while (is_digit(ch = next_char())) {
       if (strict && !specified_variables)
-        err("leading '0' digit in number of variables");
+        srr(column, "leading '0' digit in number of variables");
       if (maximum_variables_limit / 10 < specified_variables)
-        err("maximum variable limit exceeded");
+        err(column, "maximum variable limit exceeded");
       specified_variables *= 10;
       unsigned digit = ch - '0';
       if (maximum_variables_limit - digit < specified_variables)
-        err("maximum variable limit exceeded");
+        err(column, "maximum variable limit exceeded");
       specified_variables += digit;
     }
     if (ch != ' ')
-      err("expected space after 'p cnf %zu'", specified_variables);
+      err(column, "expected space after 'p cnf %zu'", specified_variables);
   }
   size_t specified_clauses;
   {
     int ch = next_char();
     if (!is_digit(ch))
-      err("expected digit after 'p cnf %zu '", specified_variables);
+      err(column, "expected digit after 'p cnf %zu '", specified_variables);
     const size_t maximum_clauses_limit = ~(size_t)0;
     specified_clauses = ch - '0';
     while (is_digit(ch = next_char())) {
       if (strict && !specified_clauses)
-        err("leading '0' digit in number of clauses");
+        srr(column, "leading '0' digit in number of clauses");
       if (maximum_clauses_limit / 10 < specified_clauses)
-        err("maximum clauses limit exceeded");
+        err(column, "maximum clauses limit exceeded");
       specified_clauses *= 10;
       unsigned digit = ch - '0';
       if (maximum_clauses_limit - digit < specified_clauses)
-        err("maximum clauses limit exceeded");
+        err(column, "maximum clauses limit exceeded");
       specified_clauses += digit;
     }
     if (ch == EOF)
-      err("unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
+      err(column, "unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
           specified_clauses);
     if (strict) {
       if (ch == '\r') {
         ch = next_char();
         if (ch != '\n')
-          err("expected new-line after carriage return after 'p cnf %zu %zu'",
+          srr(column, "expected new-line after carriage return after 'p cnf %zu %zu'",
               specified_variables, specified_clauses);
       } else if (ch != '\n')
-        err("expected new-line after 'p cnf %zu %zu'", specified_variables,
+        srr(column, "expected new-line after 'p cnf %zu %zu'", specified_variables,
             specified_clauses);
     } else {
       if (!is_space(ch))
-        err("expected space or new-line after 'p cnf %zu %zu'",
+        err(column, "expected space or new-line after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
       while (is_space(ch) && ch != '\n')
         ch = next_char();
       if (ch == EOF)
-        err("unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
+        err(column, "unexpected end-of-file after 'p cnf %zu %zu'", specified_variables,
             specified_clauses);
       if (ch != '\n')
-        err("expected new-line 'p cnf %zu %zu'", specified_variables,
+        err(column, "expected new-line 'p cnf %zu %zu'", specified_variables,
             specified_clauses);
     }
   }
@@ -343,12 +368,15 @@ static void parse_dimacs() {
     int ch = next_char();
     size_t start = lineno;
     for (;;) {
+
+      size_t token = column;
+
       if (ch == EOF) {
         if (last_lit)
-          err("terminating zero missing in last clause");
+          err(column, "terminating zero missing in last clause");
         if (last_char != '\n') {
           if (strict)
-            err("new-line missing after last clause");
+            srr(column, "new-line missing after last clause");
           else
             wrn("new-line missing after last clause");
         }
@@ -356,10 +384,10 @@ static void parse_dimacs() {
           size_t missing_clauses = specified_clauses - parsed_clauses;
           if (strict) {
             if (missing_clauses == 1)
-              err("one clause missing (parsed %zu but %zu specified)",
+              srr(column, "one clause missing (parsed %zu but %zu specified)",
                   parsed_clauses, specified_clauses);
             else
-              err("%zu clauses missing (parsed %zu but %zu specified)",
+              srr(column, "%zu clauses missing (parsed %zu but %zu specified)",
                   missing_clauses, parsed_clauses, specified_clauses);
           } else {
             if (missing_clauses == 1)
@@ -372,14 +400,18 @@ static void parse_dimacs() {
         }
         break;
       }
+
       if (is_space(ch)) {
         ch = next_char();
         continue;
       }
+
       if (ch == 'c') {
+        if (strict)
+          srr(column, "unexpected comment after header");
         while ((ch = next_char()) != '\n')
           if (ch == EOF)
-            err("end-of-file in comment");
+            err(column, "end-of-file in comment");
         ch = next_char();
         continue;
       }
@@ -391,24 +423,24 @@ static void parse_dimacs() {
       if (ch == '-') {
         ch = next_char();
         if (strict && ch == '0')
-          err("unexpected '0' after '-'");
+          srr(column, "invalid '0' after '-'");
         if (!is_digit(ch))
-          err("expected digit after '-'");
+          err(column, "expected digit after '-'");
         sign = -1;
       } else if (!is_digit(ch))
-        err("expected integer literal (digit or sign)");
+        err(column, "expected integer literal (digit or sign)");
 
       const size_t maximum_variable_index = INT_MAX;
       size_t idx = ch - '0';
       while (is_digit(ch = next_char())) {
         if (strict && !idx)
-          err("leading '0' digit in literal");
+          srr(column, "leading '0' digit in literal");
         if (maximum_variable_index / 10 < idx)
-          err("literal exceeds maximum variable limit");
+          err(column, "literal exceeds maximum variable limit");
         idx *= 10;
         const unsigned digit = ch - '0';
         if (maximum_variable_index - digit < idx)
-          err("literal exceeds maximum variable limit");
+          err(column, "literal exceeds maximum variable limit");
         idx += digit;
       }
 
@@ -416,38 +448,155 @@ static void parse_dimacs() {
       const int lit = sign * (int)idx;
 
       if (strict && ch == EOF)
-        err("end-of-file after literal '%d'", lit);
+        srr(column, "end-of-file after literal '%d'", lit);
 
       if (!is_space(ch) && ch != 'c')
-        err("unexpected character after literal '%d'", lit);
+        err(column, "unexpected character after literal '%d'", lit);
 
       if (strict && specified_clauses == parsed_clauses)
-        err("too many clauses "
+        srr(token, "too many clauses "
             "(start of clause %zu but only %zu specified)",
             parsed_clauses + 1, specified_clauses);
 
       if (strict && idx > specified_variables)
-        err("literal '%d' exceeds specified maximum variable '%zu'", lit,
+        srr(token, "literal '%d' exceeds specified maximum variable '%zu'", lit,
             specified_variables);
 
-      if (lit)
+      if (sign < 0 && !lit)
+        err(token, "negative zero literal '-0'");
+
+      if (lit) {
         push_literal(lit);
-      else {
+        if (idx > maximum_dimacs_variable)
+          maximum_dimacs_variable = idx;
+      } else {
         parsed_clauses++;
         push_clause(start);
-	clear_literals ();
+        clear_literals();
       }
     }
   }
-  msg("parsed %zu clauses with maximum variable %zu", parsed_clauses,
-      maximum_variable);
   reset_parsing();
+  msg("parsed %zu clauses with maximum variable %zu", parsed_clauses,
+      maximum_dimacs_variable);
 }
 
 static void parse_model() {
   init_parsing(model_path);
   msg("parsing model '%s'", path);
+  size_t parsed_values = 0;
+  for (;;) {
+    int ch = next_char();
+    size_t token = column;
+    if (ch == EOF)
+      break;
+    if (ch == 'c') {
+      while ((ch = next_char()) != '\n')
+        if (ch == EOF)
+          err(column, "end-of-file in comment");
+    } else if (ch == 's') {
+      if (next_char() != ' ')
+        err(column, "expected space after 's'");
+      for (const char *p = "ATISFIABLE"; *p; p++)
+        if (next_char() != *p)
+          err(token, "invalid status line (expected 's SATISFIABLE')");
+      ch = next_char();
+      if (strict) {
+        if (ch == '\r') {
+          ch = next_char();
+          if (ch != '\n')
+            err(column, "expected new-line after carriage return after "
+                "'s SATISFIABLE'");
+        } else if (ch != '\n')
+          err(column, "expected new-line after 's SATISFIABLE'");
+      } else {
+        while (is_space(ch) && ch != '\n')
+          ch = next_char();
+        if (ch != EOF)
+          err(column, "expected new-line after 's SATISFIABLE'");
+      }
+      msg("found 's SATISFIABLE' status line");
+    } else if (ch != 'v') {
+      int last_lit = INT_MIN;
+    CONTINUE_WITH_V_LINES:
+      if (next_char() != ' ')
+        err(column, "expected space after 'v'");
+      for (;;) {
+        ch = next_char();
+	token = column;
+        if (ch == EOF)
+          err(column, "end-of-file in 'v' line");
+        else if (ch == ' ' || ch == '\t')
+          continue;
+        else if (ch == '\n') {
+        END_OF_V_LINE:
+          if (last_lit) {
+            ch = next_char();
+            if (ch != 'v')
+              err(column, "expected continuation of 'v' lines (zero missing)");
+            goto CONTINUE_WITH_V_LINES;
+          } else
+            goto CONTINUE_OUTER_LOOP;
+        } else if (ch == '\r') {
+          ch = next_char();
+          if (ch != '\n')
+            err(column, "expected new-line after carriage-return in 'v' line");
+          goto END_OF_V_LINE;
+        } else {
+
+          int sign;
+
+          if (ch == '-') {
+            ch = next_char();
+            if (strict && ch == '0')
+              err(column, "invalid '0' after '-'");
+            if (!is_digit(ch))
+              err(column, "expected digit after '-'");
+            sign = -1;
+          } else if (!is_digit(ch))
+            err(column, "expected integer literal (digit or sign)");
+
+          const size_t maximum_variable_index = INT_MAX;
+          size_t idx = ch - '0';
+          while (is_digit(ch = next_char())) {
+            if (strict && !idx)
+              srr(column, "leading '0' digit in literal");
+            if (maximum_variable_index / 10 < idx)
+              err(column, "literal exceeds maximum variable limit");
+            idx *= 10;
+            const unsigned digit = ch - '0';
+            if (maximum_variable_index - digit < idx)
+              err(column, "literal exceeds maximum variable limit");
+            idx += digit;
+          }
+
+          assert(lit <= maximum_variable_index);
+          const int lit = sign * (int)idx;
+
+          if (sign < 0 && !lit)
+            err(token, "negative zero literal '-0'");
+
+          if (strict && idx > maximum_dimacs_variable)
+            srr(token, "literal '%d' exceeds maximum DIMACS variable '%zu'", lit,
+                maximum_dimacs_variable);
+
+          if (!last_lit) {
+            if (lit)
+              err(token, "literal '%d' after '0' in 'v' line", lit);
+            else
+              err(token, "two consecutive '0' in 'v' line");
+          }
+
+          last_lit = lit;
+        }
+      }
+    } else
+      err(column, "expected 'c', 's', or 'v' as first character");
+  CONTINUE_OUTER_LOOP:;
+  }
   reset_parsing();
+  msg("parsed values of %zu variables with maximum index '%zu'", parsed_values,
+      maximum_model_variable);
 }
 
 static void check_model() {
@@ -486,7 +635,7 @@ int main(int argc, char **argv) {
       if (!verbose_option)
         verbose_option = arg;
       can_not_combine(quiet_option, verbose_option);
-      assert (verbosity >= 0);
+      assert(verbosity >= 0);
       verbosity += (verbosity != INT_MAX);
     } else if (!strcmp(arg, "-q") || !strcmp(arg, "--quiet")) {
       quiet_option = arg;
@@ -515,6 +664,6 @@ int main(int argc, char **argv) {
   for (struct clause **p = clauses.begin; p != clauses.end; p++)
     free(*p);
   free(clauses.begin);
-  free(values);
+  free(values.begin);
   return 0;
 }
