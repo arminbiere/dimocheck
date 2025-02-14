@@ -553,7 +553,8 @@ static void parse_model() {
   } else
     msg("parsing in relaxed mode (without '--strict' nor '--pedantic')");
   size_t parsed_values = 0, positive_values = 0, negative_values = 0;
-  bool found_status_line = false, reported_on_status_line_found = false;
+  bool found_status_line = false, reported_status_line_found = false;
+  bool value_lines_completed = false;
   for (;;) {
     int ch = next_char();
     size_t token = column;
@@ -584,18 +585,22 @@ static void parse_model() {
         if (ch != '\n')
           err(column, "expected new-line after 's SATISFIABLE'");
       }
+      if (strict && found_status_line)
+	srr (token, "second 's SATISFIABLE' line");
       msg("found 's SATISFIABLE' status line");
       found_status_line = true;
     } else if (ch == 'v') {
-      if (!reported_on_status_line_found) {
+      if (!reported_status_line_found) {
         if (!found_status_line) {
           if (strict)
             srr(column, "'v' line without 's SATISFIABLE' status line");
           else
             wrn("'v' line without 's SATISFIABLE' status line");
         }
-        reported_on_status_line_found = true;
+        reported_status_line_found = true;
       }
+      if (value_lines_completed)
+	err (column, "second 'v' line section");
       int last_lit = INT_MIN;
     CONTINUE_WITH_V_LINES:
       if (next_char() != ' ')
@@ -615,8 +620,10 @@ static void parse_model() {
             if (ch != 'v')
               err(column, "expected continuation of 'v' lines (zero missing)");
             goto CONTINUE_WITH_V_LINES;
-          } else
+          } else {
+	    value_lines_completed = true;
             goto CONTINUE_OUTER_LOOP;
+	  }
         } else if (ch == '\r') {
           ch = next_char();
           if (ch != '\n')
@@ -628,7 +635,7 @@ static void parse_model() {
           if (ch == '-') {
             ch = next_char();
             if (strict && ch == '0')
-              err(column, "invalid '0' after '-'");
+              srr(column, "invalid '0' after '-'");
             if (!is_digit(ch))
               err(column, "expected digit after '-'");
             sign = -1;

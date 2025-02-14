@@ -1,0 +1,2 @@
+s SATISFIABLE
+invalid character

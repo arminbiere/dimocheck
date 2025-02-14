@@ -1,0 +1,4 @@
+s SATISFIABLE
+v 1
+v -1
+v 0
