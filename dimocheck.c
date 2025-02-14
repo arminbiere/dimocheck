@@ -11,12 +11,16 @@ static const char * usage =
 ;
 // clang-format on
 
+#include "config.h"
+
 #include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define PREFIX "[dimocheck] "
 
 static int verbosity;
 static bool complete;
@@ -31,13 +35,22 @@ struct clause {
 static const char *dimacs_path;
 static const char *model_path;
 
-struct {
-  size_t size;
-} variables;
+static FILE *file;
+static size_t lineno;
+static const char *path;
+static int last_char;
+
+static int maximum_variable;
+static signed char *values;
+static size_t added_clauses;
 
 struct {
   int *begin, *end, *allocated;
 } literals;
+
+struct {
+  struct clause **begin, **end, **allocated;
+} clauses;
 
 static void msg(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void vrb(const char *, ...) __attribute__((format(printf, 1, 2)));
@@ -45,10 +58,12 @@ static void vrb(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void die(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void fatal(const char *, ...) __attribute__((format(printf, 1, 2)));
 
+static void err(const char *, ...) __attribute__((format(printf, 1, 2)));
+
 static void msg(const char *fmt, ...) {
   if (verbosity < 0)
     return;
-  fputs("[dimocheck] ", stdout);
+  fputs(PREFIX, stdout);
   va_list ap;
   va_start(ap, fmt);
   vprintf(fmt, ap);
@@ -57,10 +72,11 @@ static void msg(const char *fmt, ...) {
   fflush(stdout);
 }
 
-static void vrb(const char *fmt, ...) {
+// TODO static
+void vrb(const char *fmt, ...) {
   if (verbosity < 1)
     return;
-  fputs("[dimocheck] ", stdout);
+  fputs(PREFIX, stdout);
   va_list ap;
   va_start(ap, fmt);
   vprintf(fmt, ap);
@@ -90,10 +106,100 @@ static void fatal(const char *fmt, ...) {
   exit(1);
 }
 
-static void enlarge_clause() {}
+static void err(const char *fmt, ...) {
+  fprintf(stderr, "%s:%zu: parse error: ", path, lineno);
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fputc('\n', stderr);
+  exit(1);
+}
 
-static void push_literal (int lit) {
-  assert (lit);
+static bool full_literals() { return literals.end == literals.allocated; }
+
+static size_t size_literals() { return literals.end - literals.begin; }
+
+static size_t capacity_literals() {
+  return literals.allocated - literals.begin;
+}
+
+static void enlarge_literals() {
+  const size_t old_capacity = capacity_literals();
+  const size_t new_capacity = old_capacity ? 2 * old_capacity : 1;
+  literals.begin =
+      realloc(literals.begin, new_capacity * sizeof *literals.begin);
+  if (!literals.begin)
+    fatal("out-of-memory reallocating stack of literals");
+  literals.end = literals.begin + old_capacity;
+  literals.allocated = literals.begin + new_capacity;
+  vrb("enlarged literal stack to %zu", new_capacity);
+}
+
+static void push_literal(int lit) {
+  assert(lit);
+  if (full_literals())
+    enlarge_literals();
+  *literals.end++ = lit;
+}
+
+static void clear_literals() { literals.end = literals.begin; }
+
+static bool full_clauses() { return clauses.end == clauses.allocated; }
+
+static size_t capacity_clauses() { return clauses.allocated - clauses.begin; }
+
+static void enlarge_clauses() {
+  const size_t old_capacity = capacity_clauses();
+  const size_t new_capacity = old_capacity ? 2 * old_capacity : 1;
+  clauses.begin = realloc(clauses.begin, new_capacity * sizeof *clauses.begin);
+  if (!clauses.begin)
+    fatal("out-of-memory reallocating stack of clauses");
+  clauses.end = clauses.begin + old_capacity;
+  clauses.allocated = clauses.begin + new_capacity;
+  vrb("enlarged clauses stack to %zu", new_capacity);
+}
+
+static size_t bytes_clause(size_t size) {
+  return sizeof(struct clause) + size * sizeof(int);
+}
+
+static void push_clause(size_t lineno) {
+  size_t size = size_literals();
+  size_t bytes = bytes_clause(size);
+  struct clause *clause = malloc(bytes);
+  if (!clause)
+    fatal("out-of-memory allocating clause");
+  clause->size = size;
+  clause->lineno = size;
+  size_t bytes_literals = size * sizeof(int);
+  memcpy(clause->literals, literals.begin, bytes_literals);
+  if (full_clauses())
+    enlarge_clauses();
+  *clauses.end++ = clause;
+  added_clauses++;
+  if (verbosity > 1) {
+    printf(PREFIX "new clause[%zu]", added_clauses);
+    const int *p = clause->literals, *end = p + size;
+    while (p != end)
+      printf(" %d", *p++);
+    fflush(stdout);
+  }
+}
+
+static void init_parsing(const char *p) {
+  if (!(file = fopen(path = p, "r")))
+    die("can not open and read '%s'", path);
+  last_char = 0;
+  lineno = 1;
+}
+
+static void parse_dimacs() { init_parsing(dimacs_path); }
+
+static void parse_model() { init_parsing(model_path); }
+
+static void check_model() {
+  // TODO
 }
 
 static void can_not_combine(const char *a, const char *b) {
@@ -149,6 +255,14 @@ int main(int argc, char **argv) {
     die("model file missing (try '-h')");
   msg("DiMoCheck DIMACS Model Checker");
   msg("Version %s", VERSION);
-  msg("Compiled '%s", COMPILED);
+  msg("Compiled '%s", COMPILE);
+  parse_dimacs();
+  parse_model();
+  check_model();
+  free(literals.begin);
+  for (struct clause **p = clauses.begin; p != clauses.end; p++)
+    free(*p);
+  free(clauses.begin);
+  free(values);
   return 0;
 }
