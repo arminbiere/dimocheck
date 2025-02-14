@@ -705,8 +705,8 @@ static void check_model() {
     fprintf(stderr, "%s:%zu:%zu: fatal error: clause[%zu] unsatisfied:\n",
             dimacs_path, c->lineno, c->column, p - clauses.begin + 1);
     for (q = c->literals; q != end_literals; q++)
-      fprintf (stderr, "%d ", *q);
-    fputs ("0\n", stderr);
+      fprintf(stderr, "%d ", *q);
+    fputs("0\n", stderr);
     fflush(stderr);
     abort();
     exit(1);
