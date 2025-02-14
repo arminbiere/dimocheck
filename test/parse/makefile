@@ -1,3 +1,3 @@
 all:
 	+make -C strict
-	#+make -C relaxed
+	+make -C relaxed

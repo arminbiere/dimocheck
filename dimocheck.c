@@ -342,7 +342,7 @@ static void parse_dimacs() {
     } else if (ch == 'p')
       break;
     else
-      err(column, "unexpected character (expected 'p')");
+      err(column, "unexpected character (expected 'p' or 'c')");
   }
   if (next_char() != ' ')
     err(column, "expected space after 'p'");
@@ -843,6 +843,8 @@ int main(int argc, char **argv) {
     free(*p);
   free(clauses.begin);
   free(values.begin);
+  fputs ("s MODEL_SATISFIES_FORMULA\n", stdout);
+  fflush (stdout);
   size_t bytes = maximum_resident_set_size();
   if (bytes >= 1u<<30)
     msg("maximum resident-set size %.2f GB (%zu bytes)",
