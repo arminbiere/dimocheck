@@ -45,9 +45,9 @@ static size_t charno;
 static const char *path;
 static int last_char;
 
-static int maximum_variable;
+static size_t maximum_variable;
 static signed char *values;
-static size_t added_clauses;
+static size_t parsed_clauses;
 
 struct {
   int *begin, *end, *allocated;
@@ -59,6 +59,7 @@ struct {
 
 static void msg(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void vrb(const char *, ...) __attribute__((format(printf, 1, 2)));
+static void wrn(const char *, ...) __attribute__((format(printf, 1, 2)));
 
 static void die(const char *, ...) __attribute__((format(printf, 1, 2)));
 static void fatal(const char *, ...) __attribute__((format(printf, 1, 2)));
@@ -77,11 +78,22 @@ static void msg(const char *fmt, ...) {
   fflush(stdout);
 }
 
-// TODO static
-void vrb(const char *fmt, ...) {
+static void vrb(const char *fmt, ...) {
   if (verbosity < 1)
     return;
   fputs(PREFIX, stdout);
+  va_list ap;
+  va_start(ap, fmt);
+  vprintf(fmt, ap);
+  va_end(ap);
+  fputc('\n', stdout);
+  fflush(stdout);
+}
+
+static void wrn(const char *fmt, ...) {
+  if (verbosity < 0)
+    return;
+  fputs(PREFIX "warning: ", stdout);
   va_list ap;
   va_start(ap, fmt);
   vprintf(fmt, ap);
@@ -183,12 +195,12 @@ static void push_clause(size_t lineno) {
   if (full_clauses())
     enlarge_clauses();
   *clauses.end++ = clause;
-  added_clauses++;
   if (verbosity > 1) {
-    printf(PREFIX "new clause[%zu]", added_clauses);
+    printf(PREFIX "new size %zu clause[%zu]", size, parsed_clauses);
     const int *p = clause->literals, *end = p + size;
     while (p != end)
       printf(" %d", *p++);
+    fputc ('\n', stdout);
     fflush(stdout);
   }
 }
@@ -267,6 +279,8 @@ static void parse_dimacs() {
     const size_t maximum_variables_limit = INT_MAX;
     specified_variables = ch - '0';
     while (is_digit(ch = next_char())) {
+      if (strict && !specified_variables)
+        err("leading '0' digit in number of variables");
       if (maximum_variables_limit / 10 < specified_variables)
         err("maximum variable limit exceeded");
       specified_variables *= 10;
@@ -286,6 +300,8 @@ static void parse_dimacs() {
     const size_t maximum_clauses_limit = ~(size_t)0;
     specified_clauses = ch - '0';
     while (is_digit(ch = next_char())) {
+      if (strict && !specified_clauses)
+        err("leading '0' digit in number of clauses");
       if (maximum_clauses_limit / 10 < specified_clauses)
         err("maximum clauses limit exceeded");
       specified_clauses *= 10;
@@ -321,6 +337,110 @@ static void parse_dimacs() {
     }
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
+  size_t parsed_clauses = 0;
+  {
+    int last_lit = 0;
+    int ch = next_char();
+    size_t start = lineno;
+    for (;;) {
+      if (ch == EOF) {
+        if (last_lit)
+          err("terminating zero missing in last clause");
+        if (last_char != '\n') {
+          if (strict)
+            err("new-line missing after last clause");
+          else
+            wrn("new-line missing after last clause");
+        }
+        if (parsed_clauses < specified_clauses) {
+          size_t missing_clauses = specified_clauses - parsed_clauses;
+          if (strict) {
+            if (missing_clauses == 1)
+              err("one clause missing (parsed %zu but %zu specified)",
+                  parsed_clauses, specified_clauses);
+            else
+              err("%zu clauses missing (parsed %zu but %zu specified)",
+                  missing_clauses, parsed_clauses, specified_clauses);
+          } else {
+            if (missing_clauses == 1)
+              wrn("one clause missing (parsed %zu but %zu specified)",
+                  parsed_clauses, specified_clauses);
+            else
+              wrn("%zu clauses missing (parsed %zu but %zu specified)",
+                  missing_clauses, parsed_clauses, specified_clauses);
+          }
+        }
+        break;
+      }
+      if (is_space(ch)) {
+        ch = next_char();
+        continue;
+      }
+      if (ch == 'c') {
+        while ((ch = next_char()) != '\n')
+          if (ch == EOF)
+            err("end-of-file in comment");
+        ch = next_char();
+        continue;
+      }
+
+      if (!last_lit)
+        start = lineno;
+
+      int sign = 1;
+      if (ch == '-') {
+        ch = next_char();
+        if (strict && ch == '0')
+          err("unexpected '0' after '-'");
+        if (!is_digit(ch))
+          err("expected digit after '-'");
+        sign = -1;
+      } else if (!is_digit(ch))
+        err("expected integer literal (digit or sign)");
+
+      const size_t maximum_variable_index = INT_MAX;
+      size_t idx = ch - '0';
+      while (is_digit(ch = next_char())) {
+        if (strict && !idx)
+          err("leading '0' digit in literal");
+        if (maximum_variable_index / 10 < idx)
+          err("literal exceeds maximum variable limit");
+        idx *= 10;
+        const unsigned digit = ch - '0';
+        if (maximum_variable_index - digit < idx)
+          err("literal exceeds maximum variable limit");
+        idx += digit;
+      }
+
+      assert(lit <= maximum_variable_index);
+      const int lit = sign * (int)idx;
+
+      if (strict && ch == EOF)
+        err("end-of-file after literal '%d'", lit);
+
+      if (!is_space(ch) && ch != 'c')
+        err("unexpected character after literal '%d'", lit);
+
+      if (strict && specified_clauses == parsed_clauses)
+        err("too many clauses "
+            "(start of clause %zu but only %zu specified)",
+            parsed_clauses + 1, specified_clauses);
+
+      if (strict && idx > specified_variables)
+        err("literal '%d' exceeds specified maximum variable '%zu'", lit,
+            specified_variables);
+
+      if (lit)
+        push_literal(lit);
+      else {
+        parsed_clauses++;
+        push_clause(start);
+	clear_literals ();
+      }
+    }
+  }
+  msg("parsed %zu clauses with maximum variable %zu", parsed_clauses,
+      maximum_variable);
   reset_parsing();
 }
 
@@ -366,7 +486,8 @@ int main(int argc, char **argv) {
       if (!verbose_option)
         verbose_option = arg;
       can_not_combine(quiet_option, verbose_option);
-      verbosity = -1;
+      assert (verbosity >= 0);
+      verbosity += (verbosity != INT_MAX);
     } else if (!strcmp(arg, "-q") || !strcmp(arg, "--quiet")) {
       quiet_option = arg;
       can_not_combine(verbose_option, quiet_option);
