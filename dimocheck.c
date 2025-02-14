@@ -393,7 +393,7 @@ static void parse_dimacs() {
         err(column, "maximum clauses limit exceeded");
       specified_clauses += digit;
     }
-    if (ch == EOF)
+    if (ch == EOF && (strict || specified_clauses))
       err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
           specified_variables, specified_clauses);
     if (strict) {
@@ -407,16 +407,16 @@ static void parse_dimacs() {
         srr(column, "expected new-line after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
     } else {
-      if (!is_space(ch))
+      if (!is_space(ch) && ch != EOF)
         err(column, "expected space or new-line after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
       while (is_space(ch) && ch != '\n')
         ch = next_char();
-      if (ch == EOF)
+      if (ch == EOF && specified_clauses)
         err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
       if (ch != '\n')
-        err(column, "expected new-line 'p cnf %zu %zu'", specified_variables,
+        err(column, "expected new-line after 'p cnf %zu %zu'", specified_variables,
             specified_clauses);
     }
   }
