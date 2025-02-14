@@ -1,5 +1,5 @@
 #!/bin/sh
-path=test/parse/relaxed/bad
+path=test/check/complete/good
 name=$path/run.sh
 die () {
   echo "$name: error: $*" 1>&2
@@ -15,10 +15,10 @@ do
   sol=$path/`basename $cnf .cnf`.sol
   [ -f $sol ] || die "could not find '$sol'"
   args="$cnf $sol -q"
-  #echo "dimocheck $args"
   if $binary $args 1>/dev/null
   then
-    die "'dimocheck $args' unexpectedly succeeded"
+    echo "dimocheck $args"
+  else
     exit 1
   fi
 done
