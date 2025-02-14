@@ -574,10 +574,10 @@ static void parse_model() {
         if (ch == '\r') {
           ch = next_char();
           if (ch != '\n')
-            err(column, "expected new-line after carriage return after "
+            srr(column, "expected new-line after carriage return after "
                         "'s SATISFIABLE'");
         } else if (ch != '\n')
-          err(column, "expected new-line after 's SATISFIABLE'");
+          srr(column, "expected new-line after 's SATISFIABLE'");
       } else {
         while (is_space(ch) && ch != '\n')
           ch = next_char();
