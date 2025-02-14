@@ -1,0 +1,16 @@
+#!/bin/sh
+usage () {
+cat <<EOF
+usage: configure [ -h | --help ] [ -g | --debug ]
+EOF
+}
+debug=no
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    -h | --help) usage; exit 0;;
+    -g | --debug) debug=yes;;
+    *) die "invalid option '$1' (try '-h')";;
+  esac
+  shift
+done
