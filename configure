@@ -4,6 +4,13 @@ cat <<EOF
 usage: configure [ -h | --help ] [ -g | --debug ]
 EOF
 }
+die () {
+  echo "configure: error: $*" 1>&2
+  exit 1
+}
+msg () {
+  echo "[configure] $*"
+}
 debug=no
 while [ $# -gt 0 ]
 do
@@ -14,3 +21,14 @@ do
   esac
   shift
 done
+COMPILE="gcc -Wall"
+if [ $debug = yes ]
+then
+  COMPILE="$COMPILE -g"
+else
+  COMPILE="$COMPILE -O3 -DNDEBUG"
+fi
+msg "Compiling with '$COMPILE'"
+rm -f makefile
+sed -e "s#@COMPILE@#$COMPILE#" makefile.in > makefile
+msg "Generated 'makefile' (run 'make' or 'make test')"

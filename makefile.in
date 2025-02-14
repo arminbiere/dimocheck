@@ -1,0 +1,8 @@
+all: dimocheck
+dimocheck: dimocheck.c makefile
+	@COMPILE@ -o $@ $<
+clean:
+	rm -f dimocheck
+test:
+	@echo 'not tests yet'; exit 1
+.PHONY: all clean test
