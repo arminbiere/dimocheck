@@ -442,8 +442,8 @@ static void parse_dimacs() {
       specified_clauses += digit;
     }
     if (ch == EOF && (strict || specified_clauses))
-      err(column, "end-of-file after 'p cnf %zu %zu'",
-          specified_variables, specified_clauses);
+      err(column, "end-of-file after 'p cnf %zu %zu'", specified_variables,
+          specified_clauses);
     if (strict) {
       if (ch == '\r') {
         ch = next_char();
@@ -461,8 +461,8 @@ static void parse_dimacs() {
       while (is_space(ch) && ch != '\n')
         ch = next_char();
       if (ch == EOF && specified_clauses)
-        err(column, "end-of-file after 'p cnf %zu %zu'",
-            specified_variables, specified_clauses);
+        err(column, "end-of-file after 'p cnf %zu %zu'", specified_variables,
+            specified_clauses);
     }
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
@@ -592,14 +592,14 @@ static void parse_dimacs() {
                 specified_variables);
           else if (variables_specified_exceeded == 1)
             wrn("another literal '%d' exceeds specified maximum variable '%zu' "
-                "(will not warn about additional ones)",
+                "(will stop warning about additional ones)",
                 lit, specified_variables);
           variables_specified_exceeded++;
         }
       }
 
       if (strict && idx && ch != ' ')
-        srr(column, "expected %s after literal '%d'", space_name (' '), lit);
+        srr(column, "expected %s after literal '%d'", space_name(' '), lit);
 
       if (strict && !idx) {
         if (ch == '\r') {
@@ -647,10 +647,14 @@ static void parse_model() {
   } else
     msg("parsing in relaxed mode (without '--strict' nor '--pedantic')");
   size_t parsed_values = 0, positive_values = 0, negative_values = 0;
-  bool found_status_line = false, reported_status_line_found = false;
+  bool reported_missing_status_line = false;
+  bool reported_found_status_line = false;
   bool value_lines_completed = false;
+  size_t first_status_line = 0;
+  size_t status_lines = 0;
   for (;;) {
     int ch = next_char();
+  CONTINUE_OUTER_LOOP_WITHOUT_READING_CHAR:
     size_t token = column;
     if (ch == EOF)
       break;
@@ -659,6 +663,7 @@ static void parse_model() {
         if (ch == EOF)
           err(column, "end-of-file in comment");
     } else if (ch == 's') {
+      const size_t start_of_status_line = lineno;
       if (next_char() != ' ')
         err(column, "expected space after 's'");
       for (const char *p = "SATISFIABLE"; *p; p++)
@@ -673,41 +678,54 @@ static void parse_model() {
                 space_name('\n'), space_name('\r'));
         } else if (ch != '\n')
           srr(column, "expected %s after 's SATISFIABLE'", space_name('\n'));
-      } else {
-        while (is_space(ch) && ch != '\n')
+        ch = next_char();
+      } else if (!is_space(ch))
+        err(column, "expected white-space after 's SATISFIABLE'");
+      else {
+        do
           ch = next_char();
-        if (ch != '\n')
-          err(column, "expected %s after 's SATISFIABLE'", space_name('\n'));
+        while (is_space(ch));
       }
-      if (strict && found_status_line)
-        srr(token, "second 's SATISFIABLE' line");
-      msg("found 's SATISFIABLE' status line");
-      found_status_line = true;
+      if (strict && status_lines)
+        srr(token, "second 's SATISFIABLE' line (first at line %zu)",
+            first_status_line);
+      if (!reported_found_status_line) {
+        msg("found 's SATISFIABLE' status line");
+        reported_found_status_line = true;
+      }
+      if (!status_lines++)
+        first_status_line = start_of_status_line;
+      goto CONTINUE_OUTER_LOOP_WITHOUT_READING_CHAR;
     } else if (ch == 'v') {
-      if (!reported_status_line_found) {
-        if (!found_status_line) {
-          if (strict)
-            srr(column, "'v' line without 's SATISFIABLE' status line");
-          else
-            wrn("'v' line without 's SATISFIABLE' status line");
+      if (!status_lines) {
+        if (strict)
+          srr(column, "'v' line without 's SATISFIABLE' status line");
+        else if (!reported_missing_status_line) {
+          wrn("'v' line without 's SATISFIABLE' status line");
+          reported_missing_status_line = true;
         }
-        reported_status_line_found = true;
       }
       if (value_lines_completed)
         err(column, "second 'v' line section");
       int last_lit = INT_MIN;
     CONTINUE_WITH_V_LINES:
-      if (next_char() != ' ')
-        err(column, "expected space after 'v'");
+      ch = next_char();
+      if (strict && ch != ' ')
+        srr(column, "expected %s after 'v'", space_name(' '));
+      if (ch != ' ' && ch != '\t')
+        err(column, "expected %s or %s after 'v'", space_name(' '),
+            space_name('\t'));
       for (;;) {
         ch = next_char();
       CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR:
         token = column;
         if (ch == EOF)
           err(column, "end-of-file in 'v' line");
-        else if (ch == ' ' || ch == '\t')
+        else if (ch == ' ' || ch == '\t') {
+          if (strict)
+            srr(column, "unexpected %s in 'v' line", space_name(ch));
           continue;
-        else if (ch == '\n') {
+        } else if (ch == '\n') {
         END_OF_V_LINE:
           if (last_lit) {
             ch = next_char();
