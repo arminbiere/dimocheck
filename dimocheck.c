@@ -357,7 +357,7 @@ static const char *space_name(int ch) {
   if (ch == ' ')
     return "space ' '";
   if (ch == '\t')
-    return "tab character'\\t'";
+    return "tab-character '\\t'";
   if (ch == '\r')
     return "carriage-return '\\r'";
   assert(ch == '\n');
