@@ -411,7 +411,7 @@ static void parse_dimacs() {
     specified_variables = ch - '0';
     while (is_digit(ch = next_char())) {
       if (strict && !specified_variables)
-        srr(column, "leading '0' digit in number of variables");
+        srr(column-1, "leading '0' digit in number of variables");
       if (maximum_variables_limit / 10 < specified_variables)
         err(column, "maximum variable limit exceeded");
       specified_variables *= 10;
@@ -432,7 +432,7 @@ static void parse_dimacs() {
     specified_clauses = ch - '0';
     while (is_digit(ch = next_char())) {
       if (strict && !specified_clauses)
-        srr(column, "leading '0' digit in number of clauses");
+        srr(column-1, "leading '0' digit in number of clauses");
       if (maximum_clauses_limit / 10 < specified_clauses)
         err(column, "maximum clauses limit exceeded");
       specified_clauses *= 10;
@@ -467,6 +467,7 @@ static void parse_dimacs() {
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
   {
+    size_t variables_specified_exceeded = 0;
     size_t clause_lineno = lineno;
     size_t clause_column = column;
     int last_lit = 0;
@@ -478,10 +479,12 @@ static void parse_dimacs() {
       size_t token = column;
 
       if (ch == EOF) {
+
         if (last_lit)
           err(column, "terminating zero '0' missing in last clause");
+
         if (parsed_clauses < specified_clauses) {
-          size_t missing_clauses = specified_clauses - parsed_clauses;
+          const size_t missing_clauses = specified_clauses - parsed_clauses;
           if (strict) {
             if (missing_clauses == 1)
               srr(column, "one clause missing (parsed %zu but %zu specified)",
@@ -497,7 +500,24 @@ static void parse_dimacs() {
               wrn("%zu clauses missing (parsed %zu but %zu specified)",
                   missing_clauses, parsed_clauses, specified_clauses);
           }
+        } else if (parsed_clauses > specified_clauses) {
+          assert(!strict);
+          const size_t more_clauses_than_specified =
+              parsed_clauses - specified_clauses;
+          if (more_clauses_than_specified == 1)
+            wrn("one clause more than specified "
+                "(parsed %zu but %zu specified)",
+                parsed_clauses, specified_clauses);
+          else
+            wrn("%zu more clauses than specified "
+                "(parsed %zu but %zu specified)",
+                more_clauses_than_specified, parsed_clauses, specified_clauses);
         }
+
+        if (variables_specified_exceeded)
+          wrn("parsed %zu literals exceeding specified maximum variable '%zu'",
+              variables_specified_exceeded, specified_variables);
+
         break;
       }
 
@@ -510,7 +530,7 @@ static void parse_dimacs() {
 
       if (ch == 'c') {
         if (strict)
-          srr(column, "unexpected comment after header");
+          srr(column, "unexpected comment (after 'p cnf' header)");
         while ((ch = next_char()) != '\n')
           if (ch == EOF)
             err(column, "end-of-file in comment");
@@ -538,7 +558,7 @@ static void parse_dimacs() {
       size_t idx = ch - '0';
       while (is_digit(ch = next_char())) {
         if (strict && !idx)
-          srr(column, "leading '0' digit in literal");
+          srr(column-1, "leading '0' digit in literal");
         if (maximum_variable_index / 10 < idx)
           err(column, "literal exceeds maximum variable limit");
         idx *= 10;
@@ -563,9 +583,21 @@ static void parse_dimacs() {
             "(start of clause %zu but only %zu specified)",
             parsed_clauses + 1, specified_clauses);
 
-      if (strict && idx > specified_variables)
-        srr(token, "literal '%d' exceeds specified maximum variable '%zu'", lit,
-            specified_variables);
+      if (idx > specified_variables) {
+        if (strict)
+          srr(token, "literal '%d' exceeds specified maximum variable '%zu'",
+              lit, specified_variables);
+        else {
+          if (!variables_specified_exceeded)
+            wrn("literal '%d' exceeds specified maximum variable '%zu'", lit,
+                specified_variables);
+          else if (variables_specified_exceeded == 1)
+            wrn("another literal '%d' exceeds specified maximum variable '%zu' "
+                "(will not warn about additional ones)",
+                lit, specified_variables);
+          variables_specified_exceeded++;
+        }
+      }
 
       if (strict && idx && ch != ' ')
         srr(column, "expected space after literal '%d'", lit);
@@ -595,8 +627,8 @@ static void parse_dimacs() {
       last_lit = lit;
 
       if (strict) {
-	assert ((lit && ch == ' ') || (!lit && ch == '\n'));
-	ch = next_char ();
+        assert((lit && ch == ' ') || (!lit && ch == '\n'));
+        ch = next_char();
       }
     }
   }
@@ -707,7 +739,7 @@ static void parse_model() {
           size_t idx = ch - '0';
           while (is_digit(ch = next_char())) {
             if (strict && !idx)
-              srr(column, "leading '0' digit in literal");
+              srr(column-1, "leading '0' digit in literal");
             if (maximum_variable_index / 10 < idx)
               err(column, "literal exceeds maximum variable limit");
             idx *= 10;
