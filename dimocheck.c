@@ -452,9 +452,6 @@ static void parse_dimacs() {
       if (ch == EOF && specified_clauses)
         err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
-      if (ch != '\n')
-        err(column, "expected new-line after 'p cnf %zu %zu'",
-            specified_variables, specified_clauses);
     }
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
