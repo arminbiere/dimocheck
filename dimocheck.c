@@ -25,16 +25,17 @@ static const char * usage =
 "\n"
 "If checking succeeds the program returns with exit code '0' and prints the\n"
 "line 's MODEL_SATISFIES_FORMULA' on '<stdout>'.  Errors are reported on\n"
-"'<stderr>' and lead to an non-zero exit code.  Only 's SATISFIABLE' is\n"
+"'<stderr>' and lead to a non-zero exit code.  Only 's SATISFIABLE' is\n"
 "supported as status line and other status lines, e.g., 's UNSATISFIABLE' or\n"
-"'s UNKNOWN' are considered an error (even in relaxed mode).\n"
+"'s UNKNOWN', are considered an error (even in relaxed mode).\n"
 "\n"
 "By default the parsing and checking is more relaxed.  For instance more\n"
 "spaces and comments are allowed and also the 'p cnf ...' header line can\n"
 "have arbitrary values.  We further only require by default a partial model,\n"
 "i.e., not all variables need to occur in 'v' lines, as long they still\n"
-"satisfy each clause (a literal without value is treated as false).  This can\n"
-"be changed by setting '--strict', '--complete', or '--pedantic'.\n"
+"satisfy each clause (a literal without value is treated as false in each\n"
+"clause).  Strict and complete parsing and checking can be enforced with\n"
+"'--strict', '--complete', or '--pedantic'.\n"
 ;
 // clang-format on
 
