@@ -1,13 +1,28 @@
 // clang-format off
 static const char * usage =
-"usage: dimocheck [ <option> ... ] <dimacs> <solution\n"
+"usage: dimocheck [ <option> ... ] <dimacs> <solution>\n"
 "\n"
 "-h | -help       print this command line option summary\n"
 "-s | --strict    strict parsing (default is relaxed parsing)\n"
-"-c | --complete  require full models (otherwise partial is fined)\n"
+"-c | --complete  require full models (default is partial model checking)\n"
 "-p | --pedantic  strict and complete mode\n"
 "-v | --verbose   increase verbosity\n"
-"-q | --quiet     no messages except errors\n"
+"-q | --quiet     no messages except the status line, warnings and errors\n"
+"     --silent    really no message at all (exit code determines success)\n"
+"\n"
+"The first file '<dimacs>' is supposed a formula in DIMACS format\n"
+"and the second file '<solution>' should have the SAT competition\n"
+"output format, with comment lines 'c', the status line 's' and\n"
+"potentially several 'v' lines.\n"
+"\n"
+"If they are compressed, i.e., they a '.gz', '.xz', '.bz2' file\n"
+"name suffix, then the tools tries to open them through a pipe\n"
+"and relies on the existence of external tools 'gzip', 'xz', or\n"
+"'bzip2' to perform the actual decompression.\n"
+"\n"
+"If checking succeeds the program returns with exit code '0' and\n"
+"prints the line 's MODEL_SATISFIES_FORMULA' on '<stdout>'.  Errors\n"
+"are reported on '<stderr>' and lead to an non-zero exit code.\n"
 ;
 // clang-format on
 
@@ -104,7 +119,7 @@ static void vrb(const char *fmt, ...) {
 }
 
 static void wrn(const char *fmt, ...) {
-  if (verbosity < 0)
+  if (verbosity == INT_MIN)
     return;
   fputs(PREFIX "warning: ", stdout);
   va_list ap;
@@ -116,47 +131,55 @@ static void wrn(const char *fmt, ...) {
 }
 
 static void die(const char *fmt, ...) {
-  fputs("dimocheck: error: ", stderr);
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fputc('\n', stderr);
+  if (verbosity != INT_MIN) {
+    fputs("dimocheck: error: ", stderr);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+  }
   exit(1);
 }
 
 static void fatal(const char *fmt, ...) {
-  fputs("dimocheck: fatal error: ", stderr);
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fputc('\n', stderr);
+  if (verbosity != INT_MIN) {
+    fputs("dimocheck: fatal error: ", stderr);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+  }
   abort();
-  exit(1);
+  exit(1); // Unreachable but kept for safety.
 }
 
 static void err(size_t token, const char *fmt, ...) {
   assert(last_char[0] != '\n' || lineno > 1);
-  fprintf(stderr, "%s:%zu:%zu: parse error: ", path,
-          lineno - (last_char[0] == '\n'), token);
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fputc('\n', stderr);
+  if (verbosity != INT_MIN) {
+    fprintf(stderr, "%s:%zu:%zu: parse error: ", path,
+            lineno - (last_char[0] == '\n'), token);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+  }
   exit(1);
 }
 
 static void srr(size_t token, const char *fmt, ...) {
   assert(last_char[0] != '\n' || lineno > 1);
-  fprintf(stderr, "%s:%zu:%zu: strict parsing error: ", path,
-          lineno - (last_char[0] == '\n'), token);
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fputc('\n', stderr);
+  if (verbosity != INT_MIN) {
+    fprintf(stderr, "%s:%zu:%zu: strict parsing error: ", path,
+            lineno - (last_char[0] == '\n'), token);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+  }
   exit(1);
 }
 
@@ -271,7 +294,7 @@ static void init_parsing(const char *p) {
   if (has_suffix(p, ".bz2"))
     file = read_zipped("bunzip2", p);
   else if (has_suffix(p, ".gz"))
-    file = read_zipped("gunzip", p);
+    file = read_zipped("gzip", p);
   else if (has_suffix(p, ".xz"))
     file = read_zipped("xz", p);
   else {
@@ -416,8 +439,8 @@ static void parse_dimacs() {
         err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
       if (ch != '\n')
-        err(column, "expected new-line after 'p cnf %zu %zu'", specified_variables,
-            specified_clauses);
+        err(column, "expected new-line after 'p cnf %zu %zu'",
+            specified_variables, specified_clauses);
     }
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
@@ -586,7 +609,7 @@ static void parse_model() {
           err(column, "expected new-line after 's SATISFIABLE'");
       }
       if (strict && found_status_line)
-	srr (token, "second 's SATISFIABLE' line");
+        srr(token, "second 's SATISFIABLE' line");
       msg("found 's SATISFIABLE' status line");
       found_status_line = true;
     } else if (ch == 'v') {
@@ -600,7 +623,7 @@ static void parse_model() {
         reported_status_line_found = true;
       }
       if (value_lines_completed)
-	err (column, "second 'v' line section");
+        err(column, "second 'v' line section");
       int last_lit = INT_MIN;
     CONTINUE_WITH_V_LINES:
       if (next_char() != ' ')
@@ -621,9 +644,9 @@ static void parse_model() {
               err(column, "expected continuation of 'v' lines (zero missing)");
             goto CONTINUE_WITH_V_LINES;
           } else {
-	    value_lines_completed = true;
+            value_lines_completed = true;
             goto CONTINUE_OUTER_LOOP;
-	  }
+          }
         } else if (ch == '\r') {
           ch = next_char();
           if (ch != '\n')
@@ -798,6 +821,7 @@ int main(int argc, char **argv) {
   const char *pedantic_option = 0;
   const char *verbose_option = 0;
   const char *quiet_option = 0;
+  const char *silent_option = 0;
   for (int i = 1; i != argc; i++) {
     const char *arg = argv[i];
     if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
@@ -821,12 +845,19 @@ int main(int argc, char **argv) {
       if (!verbose_option)
         verbose_option = arg;
       can_not_combine(quiet_option, verbose_option);
+      can_not_combine(silent_option, verbose_option);
       assert(verbosity >= 0);
       verbosity += (verbosity != INT_MAX);
     } else if (!strcmp(arg, "-q") || !strcmp(arg, "--quiet")) {
       quiet_option = arg;
       can_not_combine(verbose_option, quiet_option);
+      can_not_combine(silent_option, quiet_option);
       verbosity = -1;
+    } else if (!strcmp(arg, "--silent")) {
+      silent_option = arg;
+      can_not_combine(verbose_option, silent_option);
+      can_not_combine(quiet_option, silent_option);
+      verbosity = INT_MIN;
     } else if (arg[0] == '-')
       die("invalid option '%s' (try '-h')", arg);
     else if (!dimacs_path)
@@ -840,10 +871,12 @@ int main(int argc, char **argv) {
     die("DIMACS file missing (try '-h')");
   if (!model_path)
     die("model file missing (try '-h')");
-  msg("DiMoCheck DIMACS Model Checker");
-  msg("Copyright (c) 2025, Armin Biere, University of Freiburg");
-  msg("Version %s", VERSION);
-  msg("Compiled with '%s'", COMPILE);
+  if (verbosity >= 0) {
+    msg("DiMoCheck DIMACS Model Checker");
+    msg("Copyright (c) 2025, Armin Biere, University of Freiburg");
+    msg("Version %s", VERSION);
+    msg("Compiled with '%s'", COMPILE);
+  }
   parse_dimacs();
   parse_model();
   check_model();
@@ -852,15 +885,19 @@ int main(int argc, char **argv) {
     free(*p);
   free(clauses.begin);
   free(values.begin);
-  fputs("s MODEL_SATISFIES_FORMULA\n", stdout);
-  fflush(stdout);
-  size_t bytes = maximum_resident_set_size();
-  if (bytes >= 1u << 30)
-    msg("maximum resident-set size %.2f GB (%zu bytes)",
-        bytes / (double)(1u << 30), bytes);
-  else
-    msg("maximum resident-set size %.2f MB (%zu bytes)",
-        bytes / (double)(1 << 20), bytes);
-  msg("total process-time %.2f seconds", process_time());
+  if (verbosity != INT_MIN) {
+    fputs("s MODEL_SATISFIES_FORMULA\n", stdout);
+    fflush(stdout);
+  }
+  if (verbosity >= 0) {
+    size_t bytes = maximum_resident_set_size();
+    if (bytes >= 1u << 30)
+      msg("maximum resident-set size %.2f GB (%zu bytes)",
+          bytes / (double)(1u << 30), bytes);
+    else
+      msg("maximum resident-set size %.2f MB (%zu bytes)",
+          bytes / (double)(1 << 20), bytes);
+    msg("total process-time %.2f seconds", process_time());
+  }
   return 0;
 }
