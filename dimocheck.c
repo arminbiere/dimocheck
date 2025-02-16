@@ -571,9 +571,6 @@ static void parse_dimacs() {
       const int lit = sign * (int)idx;
       assert(abs(lit) <= maximum_variable_index);
 
-      if (strict && ch == EOF)
-        srr(column, "end-of-file after literal '%d'", lit);
-
       if (!is_space(ch) && ch != 'c')
         err(column, "unexpected character after literal '%d'", lit);
 
