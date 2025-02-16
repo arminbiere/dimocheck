@@ -591,6 +591,11 @@ static void parse_dimacs() {
         clear_literals();
       }
       last_lit = lit;
+
+      if (strict) {
+	assert ((lit && ch == ' ') || (!lit && ch == '\n'));
+	ch = next_char ();
+      }
     }
   }
   reset_parsing();
