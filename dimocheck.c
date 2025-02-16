@@ -653,6 +653,7 @@ static void parse_model() {
   bool reported_missing_status_line = false;
   bool reported_found_status_line = false;
   size_t dimacs_variable_exceeded = 0;
+  size_t first_vline_section = 0;
   size_t first_status_line = 0;
   size_t value_sections = 0;
   size_t status_lines = 0;
@@ -724,12 +725,17 @@ static void parse_model() {
 
       if (value_sections++) {
         if (strict)
-          srr(column, "second 'v' line section");
+          srr(column, "second 'v' line section (first at line %zu)",
+              first_vline_section);
         else if (value_sections == 2)
-          wrn("second 'v' line section");
+          wrn("second 'v' line section (first at line %zu)",
+              first_vline_section);
         else if (value_sections == 3)
           wrn("third 'v' line section (will stop warning about more)");
       }
+
+      if (!first_vline_section)
+        first_vline_section = lineno;
 
       for (;;) { // Ranges over all 'v' lines of one section.
 
