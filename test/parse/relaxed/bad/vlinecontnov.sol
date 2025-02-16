@@ -1,0 +1,4 @@
+s SATISFIABLE
+v 1
+oops
+0
