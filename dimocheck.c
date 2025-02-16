@@ -411,7 +411,7 @@ static void parse_dimacs() {
     specified_variables = ch - '0';
     while (is_digit(ch = next_char())) {
       if (strict && !specified_variables)
-        srr(column-1, "leading '0' digit in number of variables");
+        srr(column - 1, "leading '0' digit in number of variables");
       if (maximum_variables_limit / 10 < specified_variables)
         err(column, "maximum variable limit exceeded");
       specified_variables *= 10;
@@ -432,7 +432,7 @@ static void parse_dimacs() {
     specified_clauses = ch - '0';
     while (is_digit(ch = next_char())) {
       if (strict && !specified_clauses)
-        srr(column-1, "leading '0' digit in number of clauses");
+        srr(column - 1, "leading '0' digit in number of clauses");
       if (maximum_clauses_limit / 10 < specified_clauses)
         err(column, "maximum clauses limit exceeded");
       specified_clauses *= 10;
@@ -442,26 +442,26 @@ static void parse_dimacs() {
       specified_clauses += digit;
     }
     if (ch == EOF && (strict || specified_clauses))
-      err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
+      err(column, "end-of-file after 'p cnf %zu %zu'",
           specified_variables, specified_clauses);
     if (strict) {
       if (ch == '\r') {
         ch = next_char();
         if (ch != '\n')
-          srr(column,
-              "expected new-line after carriage return after 'p cnf %zu %zu'",
-              specified_variables, specified_clauses);
+          srr(column, "expected %s after %s after 'p cnf %zu %zu'",
+              space_name('\n'), space_name('\r'), specified_variables,
+              specified_clauses);
       } else if (ch != '\n')
-        srr(column, "expected new-line after 'p cnf %zu %zu'",
+        srr(column, "expected %s after 'p cnf %zu %zu'", space_name(' '),
             specified_variables, specified_clauses);
     } else {
       if (!is_space(ch) && ch != EOF)
-        err(column, "expected space or new-line after 'p cnf %zu %zu'",
-            specified_variables, specified_clauses);
+        err(column, "expected %s or %s after 'p cnf %zu %zu'", space_name(' '),
+            space_name('\n'), specified_variables, specified_clauses);
       while (is_space(ch) && ch != '\n')
         ch = next_char();
       if (ch == EOF && specified_clauses)
-        err(column, "unexpected end-of-file after 'p cnf %zu %zu'",
+        err(column, "end-of-file after 'p cnf %zu %zu'",
             specified_variables, specified_clauses);
     }
   }
@@ -515,8 +515,10 @@ static void parse_dimacs() {
         }
 
         if (variables_specified_exceeded)
-          wrn("parsed %zu literals exceeding specified maximum variable '%zu'",
-              variables_specified_exceeded, specified_variables);
+          wrn("parsed %zu literals exceeding specified maximum variable '%zu' "
+              "(maximum parsed variable index '%d')",
+              variables_specified_exceeded, specified_variables,
+              maximum_dimacs_variable);
 
         break;
       }
@@ -530,7 +532,7 @@ static void parse_dimacs() {
 
       if (ch == 'c') {
         if (strict)
-          srr(column, "unexpected comment (after 'p cnf' header)");
+          srr(column, "unexpected comment 'c' (after 'p cnf' header)");
         while ((ch = next_char()) != '\n')
           if (ch == EOF)
             err(column, "end-of-file in comment");
@@ -558,7 +560,7 @@ static void parse_dimacs() {
       size_t idx = ch - '0';
       while (is_digit(ch = next_char())) {
         if (strict && !idx)
-          srr(column-1, "leading '0' digit in literal");
+          srr(column - 1, "leading '0' digit in literal");
         if (maximum_variable_index / 10 < idx)
           err(column, "literal exceeds maximum variable limit");
         idx *= 10;
@@ -597,16 +599,18 @@ static void parse_dimacs() {
       }
 
       if (strict && idx && ch != ' ')
-        srr(column, "expected space after literal '%d'", lit);
+        srr(column, "expected %s after literal '%d'", space_name (' '), lit);
 
       if (strict && !idx) {
         if (ch == '\r') {
           ch = next_char();
           if (ch != '\n')
-            srr(column, "expected new-line after carriage-return "
-                        "after terminating zero '0'");
+            srr(column,
+                "expected %s after carriage-return after terminating zero '0'",
+                space_name('\n'));
         } else if (ch != '\n')
-          srr(column, "expected new-line after terminating zero '0'");
+          srr(column, "expected %s after terminating zero '0'",
+              space_name('\n'));
       }
 
       if (sign < 0 && !lit)
@@ -665,15 +669,15 @@ static void parse_model() {
         if (ch == '\r') {
           ch = next_char();
           if (ch != '\n')
-            srr(column, "expected new-line after carriage return after "
-                        "'s SATISFIABLE'");
+            srr(column, "expected %s after %s after 's SATISFIABLE'",
+                space_name('\n'), space_name('\r'));
         } else if (ch != '\n')
-          srr(column, "expected new-line after 's SATISFIABLE'");
+          srr(column, "expected %s after 's SATISFIABLE'", space_name('\n'));
       } else {
         while (is_space(ch) && ch != '\n')
           ch = next_char();
         if (ch != '\n')
-          err(column, "expected new-line after 's SATISFIABLE'");
+          err(column, "expected %s after 's SATISFIABLE'", space_name('\n'));
       }
       if (strict && found_status_line)
         srr(token, "second 's SATISFIABLE' line");
@@ -717,7 +721,8 @@ static void parse_model() {
         } else if (ch == '\r') {
           ch = next_char();
           if (ch != '\n')
-            err(column, "expected new-line after carriage-return in 'v' line");
+            err(column, "expected %s after %s in 'v' line", space_name('\n'),
+                space_name('\r'));
           goto END_OF_V_LINE;
         } else {
 
@@ -736,7 +741,7 @@ static void parse_model() {
           size_t idx = ch - '0';
           while (is_digit(ch = next_char())) {
             if (strict && !idx)
-              srr(column-1, "leading '0' digit in literal");
+              srr(column - 1, "leading '0' digit in literal");
             if (maximum_variable_index / 10 < idx)
               err(column, "literal exceeds maximum variable limit");
             idx *= 10;
