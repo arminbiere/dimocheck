@@ -352,6 +352,18 @@ static bool is_space(int ch) {
 
 static bool is_digit(int ch) { return '0' <= ch && ch <= '9'; }
 
+static const char *space_name(int ch) {
+  assert(is_space(ch));
+  if (ch == ' ')
+    return "space ' '";
+  if (ch == '\t')
+    return "tab character'\\t'";
+  if (ch == '\r')
+    return "carriage-return '\\r'";
+  assert(ch == '\n');
+  return "new-line '\\n'";
+}
+
 static void parse_dimacs() {
   init_parsing(dimacs_path);
   msg("parsing DIMACS '%s'", path);
@@ -465,13 +477,7 @@ static void parse_dimacs() {
 
       if (ch == EOF) {
         if (last_lit)
-          err(column, "terminating zero missing in last clause");
-        if (last_char[1] != '\n') {
-          if (strict)
-            srr(column, "new-line missing after last clause");
-          else
-            wrn("new-line missing after last clause");
-        }
+          err(column, "terminating zero '0' missing in last clause");
         if (parsed_clauses < specified_clauses) {
           size_t missing_clauses = specified_clauses - parsed_clauses;
           if (strict) {
@@ -494,6 +500,8 @@ static void parse_dimacs() {
       }
 
       if (is_space(ch)) {
+        if (strict)
+          srr(column, "unexpected %s (expected literal)", space_name(ch));
         ch = next_char();
         continue;
       }
@@ -556,6 +564,19 @@ static void parse_dimacs() {
       if (strict && idx > specified_variables)
         srr(token, "literal '%d' exceeds specified maximum variable '%zu'", lit,
             specified_variables);
+
+      if (strict && idx && ch != ' ')
+        srr(column, "expected space after literal '%d'", lit);
+
+      if (strict && !idx) {
+        if (ch == '\r') {
+          ch = next_char();
+          if (ch != '\n')
+            srr(column, "expected new-line after carriage-return "
+                        "after terminating zero '0'");
+        } else if (ch != '\n')
+          srr(column, "expected new-line after terminating zero '0'");
+      }
 
       if (sign < 0 && !lit)
         err(token, "negative zero literal '-0'");
