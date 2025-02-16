@@ -687,16 +687,15 @@ static void parse_model() {
           if (ch != '\n')
             srr(column, "expected %s after %s after 's SATISFIABLE'",
                 space_name('\n'), space_name('\r'));
-        } else if (ch != '\n')
-          srr(column, "expected %s after 's SATISFIABLE'", space_name('\n'));
-        ch = next_char();
-      } else if (!is_space(ch))
-        err(column, "expected white-space after 's SATISFIABLE'");
+        }
+      } else if (ch == EOF)
+        break; // Terminate outer loop.
       else {
-        do
+        while (ch != '\n' && is_space(ch))
           ch = next_char();
-        while (is_space(ch));
       }
+      if (ch != '\n')
+        srr(column, "expected %s after 's SATISFIABLE'", space_name('\n'));
       if (strict && status_lines)
         srr(token, "second 's SATISFIABLE' line (first at line %zu)",
             first_status_line);
@@ -707,6 +706,8 @@ static void parse_model() {
       if (!status_lines++)
         first_status_line = start_of_status_line;
 
+      assert(ch == '\n');
+      ch = next_char();
       continue; // With outer 'for' loop.
     }
 
@@ -877,7 +878,7 @@ static void parse_model() {
                 err(column, "expected %s after '0'", space_name('\n'));
             }
 
-            ch = next_char ();
+            ch = next_char();
             goto CONTINUE_WITH_OUTER_LOOP;
           }
 
