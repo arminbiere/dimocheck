@@ -1,2 +1,0 @@
-comments
-s SATISFIABLE
