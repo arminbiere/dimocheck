@@ -15,10 +15,5 @@ do
   sol=$path/`basename $cnf .cnf`.sol
   [ -f $sol ] || die "could not find '$sol'"
   args="$cnf $sol -q"
-  if $binary $args 1>/dev/null
-  then
-    echo "dimocheck $args"
-  else
-    exit 1
-  fi
+  $binary $args 1>/dev/null || die "'dimocheck $args' failed"
 done

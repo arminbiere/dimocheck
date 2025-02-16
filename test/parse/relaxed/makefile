@@ -1,3 +1,3 @@
 all:
-	+make -C bad
+	+make -C bad test
 	@#+make -C good

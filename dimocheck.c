@@ -5,15 +5,18 @@ static const char * usage =
 "-h | -help       print this command line option summary\n"
 "-s | --strict    strict parsing (default is relaxed parsing)\n"
 "-c | --complete  require full models (default is partial model checking)\n"
-"-p | --pedantic  strict and complete mode\n"
-"-v | --verbose   increase verbosity\n"
+"-p | --pedantic  set both strict and complete mode\n"
+"-v | --verbose   print verbose information\n"
+"-d | --debug     print debugging information\n"
 "-q | --quiet     no messages except the status line, warnings and errors\n"
 "     --silent    really no message at all (exit code determines success)\n"
+"     --banner    only print banner\n"
+"     --version   only print version\n"
 "\n"
 "The first file '<dimacs>' is supposed to be a formula in DIMACS format\n"
 "and the second '<solution>' file should have the SAT competition\n"
 "output format, with comment lines 'c', the status line 's' and\n"
-"potentially several 'v' lines.
+"potentially several 'v' lines.\n"
 "\n"
 "If they are compressed, i.e., they a '.gz', '.xz', '.bz2' file\n"
 "name suffix, then the tools tries to open them through a pipe\n"
@@ -32,6 +35,7 @@ static const char * usage =
 "model, i.e., not all variables need to occur in 'v' lines, as long they\n"
 "still satisfy each clause (a literal without value is treated as false).\n"
 "This can be changed by setting '--strict', '--complete', or '--pedantic'.\n"
+"\n"
 ;
 // clang-format on
 
@@ -255,7 +259,7 @@ static void push_clause(size_t lineno, size_t column) {
   if (full_clauses())
     enlarge_clauses();
   *clauses.end++ = clause;
-  if (verbosity > 1) {
+  if (verbosity == INT_MAX) {
     printf(PREFIX "new size %zu clause[%zu]", size, parsed_clauses);
     const int *p = clause->literals, *end = p + size;
     while (p != end)
@@ -706,7 +710,7 @@ static void parse_model() {
               err(token, "two consecutive '0' in 'v' line");
           }
 
-          if (verbosity > 1) {
+          if (verbosity == INT_MAX) {
             if (lit)
               printf(PREFIX "parsed value literal '%d'\n", lit);
             else
@@ -830,6 +834,7 @@ static double process_time() {
 int main(int argc, char **argv) {
   const char *pedantic_option = 0;
   const char *verbose_option = 0;
+  const char *debug_option = 0;
   const char *quiet_option = 0;
   const char *silent_option = 0;
   for (int i = 1; i != argc; i++) {
@@ -852,19 +857,26 @@ int main(int argc, char **argv) {
       strict_option = complete_option = pedantic_option;
       strict = complete = true;
     } else if (!strcmp(arg, "-v") || !strcmp(arg, "--verbose")) {
-      if (!verbose_option)
-        verbose_option = arg;
+      verbose_option = arg;
+      can_not_combine(debug_option, verbose_option);
       can_not_combine(quiet_option, verbose_option);
       can_not_combine(silent_option, verbose_option);
-      assert(verbosity >= 0);
-      verbosity += (verbosity != INT_MAX);
+      verbosity = 1;
+    } else if (!strcmp(arg, "-d") || !strcmp(arg, "--debug")) {
+      debug_option = arg;
+      can_not_combine(verbose_option, debug_option);
+      can_not_combine(quiet_option, debug_option);
+      can_not_combine(silent_option, debug_option);
+      verbosity = INT_MAX;
     } else if (!strcmp(arg, "-q") || !strcmp(arg, "--quiet")) {
       quiet_option = arg;
+      can_not_combine(debug_option, quiet_option);
       can_not_combine(verbose_option, quiet_option);
       can_not_combine(silent_option, quiet_option);
       verbosity = -1;
     } else if (!strcmp(arg, "--silent")) {
       silent_option = arg;
+      can_not_combine(debug_option, silent_option);
       can_not_combine(verbose_option, silent_option);
       can_not_combine(quiet_option, silent_option);
       verbosity = INT_MIN;
