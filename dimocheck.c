@@ -639,6 +639,7 @@ static void parse_dimacs() {
 }
 
 static void parse_model() {
+
   init_parsing(model_path);
   msg("parsing model '%s'", path);
   if (strict) {
@@ -646,23 +647,33 @@ static void parse_model() {
     msg("parsing in strict mode (due to '%s')", strict_option);
   } else
     msg("parsing in relaxed mode (without '--strict' nor '--pedantic')");
+
   size_t parsed_values = 0, positive_values = 0, negative_values = 0;
+
   bool reported_missing_status_line = false;
   bool reported_found_status_line = false;
-  bool value_lines_completed = false;
+  size_t dimacs_variable_exceeded = 0;
   size_t first_status_line = 0;
+  size_t value_sections = 0;
   size_t status_lines = 0;
+
+  int ch = next_char();
   for (;;) {
-    int ch = next_char();
-  CONTINUE_OUTER_LOOP_WITHOUT_READING_CHAR:
-    size_t token = column;
+
     if (ch == EOF)
       break;
+
+    size_t token = column;
     if (ch == 'c') {
       while ((ch = next_char()) != '\n')
         if (ch == EOF)
           err(column, "end-of-file in comment");
-    } else if (ch == 's') {
+      ch = next_char();
+
+      continue; // With outer 'for' loop.
+    }
+
+    if (ch == 's') {
       const size_t start_of_status_line = lineno;
       if (next_char() != ' ')
         err(column, "expected space after 's'");
@@ -695,8 +706,12 @@ static void parse_model() {
       }
       if (!status_lines++)
         first_status_line = start_of_status_line;
-      goto CONTINUE_OUTER_LOOP_WITHOUT_READING_CHAR;
-    } else if (ch == 'v') {
+
+      continue; // With outer 'for' loop.
+    }
+
+    if (ch == 'v') {
+
       if (!status_lines) {
         if (strict)
           srr(column, "'v' line without 's SATISFIABLE' status line");
@@ -705,44 +720,47 @@ static void parse_model() {
           reported_missing_status_line = true;
         }
       }
-      if (value_lines_completed)
-        err(column, "second 'v' line section");
-      int last_lit = INT_MIN;
-    CONTINUE_WITH_V_LINES:
-      ch = next_char();
-      if (strict && ch != ' ')
-        srr(column, "expected %s after 'v'", space_name(' '));
-      if (ch != ' ' && ch != '\t')
-        err(column, "expected %s or %s after 'v'", space_name(' '),
-            space_name('\t'));
-      for (;;) {
+
+      if (value_sections++) {
+        if (strict)
+          srr(column, "second 'v' line section");
+        else if (value_sections == 2)
+          wrn("second 'v' line section");
+        else if (value_sections == 3)
+          wrn("third 'v' line section (will stop warning about more)");
+      }
+
+      for (;;) { // Ranges over all 'v' lines of one section.
+
         ch = next_char();
-      CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR:
-        token = column;
-        if (ch == EOF)
-          err(column, "end-of-file in 'v' line");
-        else if (ch == ' ' || ch == '\t') {
-          if (strict)
-            srr(column, "unexpected %s in 'v' line", space_name(ch));
-          continue;
-        } else if (ch == '\n') {
-        END_OF_V_LINE:
-          if (last_lit) {
+        if (strict) {
+          if (ch != ' ')
+            srr(column, "expected %s after 'v'", space_name(' '));
+          ch = next_char();
+        } else {
+        PARSE_SPACE_AFTER_V:
+          if (ch != ' ' && ch != '\t')
+            err(column, "expected %s or %s after 'v'", space_name(' '),
+                space_name('\t'));
+          while (ch == ' ' || ch == '\t')
+            ch = next_char();
+        }
+
+        for (;;) { // Ranges over values in one 'v' line.
+
+          if (ch == EOF)
+            err(column, "end-of-file in 'v' line");
+
+          if (!strict && ch == '\n') {
+          CONTINUE_IN_VLINE_AFTER_NEW_LINE:
             ch = next_char();
             if (ch != 'v')
-              err(column, "expected continuation of 'v' lines (zero missing)");
-            goto CONTINUE_WITH_V_LINES;
-          } else {
-            value_lines_completed = true;
-            goto CONTINUE_OUTER_LOOP;
+              err(column, "expected 'v' as first character");
+            ch = next_char();
+            goto PARSE_SPACE_AFTER_V;
           }
-        } else if (ch == '\r') {
-          ch = next_char();
-          if (ch != '\n')
-            err(column, "expected %s after %s in 'v' line", space_name('\n'),
-                space_name('\r'));
-          goto END_OF_V_LINE;
-        } else {
+
+          token = column;
 
           int sign = 1;
           if (ch == '-') {
@@ -772,18 +790,18 @@ static void parse_model() {
           const int lit = sign * (int)idx;
           assert(abs(lit) <= maximum_variable_index);
 
-          if (sign < 0 && !lit)
-            err(token, "negative zero literal '-0'");
-
-          if (strict && idx > maximum_dimacs_variable)
-            srr(token, "literal '%d' exceeds maximum DIMACS variable '%d'", lit,
-                maximum_dimacs_variable);
-
-          if (!last_lit) {
-            if (lit)
-              err(token, "literal '%d' after '0' in 'v' line", lit);
-            else
-              err(token, "two consecutive '0' in 'v' line");
+          if (idx > maximum_dimacs_variable) {
+            if (strict)
+              srr(token, "literal '%d' exceeds maximum DIMACS variable '%d'",
+                  lit, maximum_dimacs_variable);
+            else if (!dimacs_variable_exceeded)
+              wrn("literal '%d' exceeds maximum DIMACS variable '%d'", lit,
+                  maximum_dimacs_variable);
+            else if (dimacs_variable_exceeded == 1)
+              wrn("another literal '%d' exceeds maximum DIMACS variable '%d' "
+                  "(will stop warning about additional ones)",
+                  lit, maximum_dimacs_variable);
+            dimacs_variable_exceeded++;
           }
 
           if (verbosity == INT_MAX) {
@@ -822,17 +840,59 @@ static void parse_model() {
             else
               positive_values++;
           }
-
           values.begin[idx] = new_value;
 
-          last_lit = lit;
-          goto CONTINUE_WITH_V_LINE_BUT_WITHOUT_READING_CHAR;
-        }
-      }
-    } else
-      err(column, "expected 'c', 's' or 'v' as first character");
-  CONTINUE_OUTER_LOOP:;
-  }
+          if (lit) {
+
+            if (strict) {
+              if (ch != ' ')
+                srr(column, "expected %s after '%d'", space_name(' '), lit);
+
+              ch = next_char();
+
+            } else {
+              if (!is_space(ch))
+                err(column, "expected white-space after '%d'", lit);
+              while (ch != '\n' && is_space(ch))
+                ch = next_char(ch);
+              if (ch == '\n')
+                goto CONTINUE_IN_VLINE_AFTER_NEW_LINE;
+            }
+
+          } else {
+
+            if (strict) {
+              if (ch == '\r') {
+                ch = next_char();
+                if (ch != '\n')
+                  srr(column, "expected %s after %s after '0'",
+                      space_name('\n'), space_name('\r'));
+              } else if (ch != '\n')
+                srr(column, "expected %s after '0'", space_name('\n'));
+
+            } else {
+              while (ch != '\n' && is_space(ch))
+                ch = next_char();
+              if (ch != '\n')
+                err(column, "expected %s after '0'", space_name('\n'));
+            }
+
+            ch = next_char ();
+            goto CONTINUE_WITH_OUTER_LOOP;
+          }
+
+        } // End of 'for' loop over all all values in one 'v' line.
+
+      } // End of 'for' loop over all 'v' lines of one section.
+
+      continue; // With outer loop (new 'c', 's, or 'v' lines).
+    }
+
+    err(column, "expected 'c', 's' or 'v' as first character");
+
+  CONTINUE_WITH_OUTER_LOOP:;
+  } // End of outer 'for' loop over 'c', 's' and 'v' parts.
+
   reset_parsing();
   msg("parsed values of %zu variables with maximum index '%d'", parsed_values,
       maximum_model_variable);
