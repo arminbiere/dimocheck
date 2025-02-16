@@ -10,10 +10,10 @@ static const char * usage =
 "-q | --quiet     no messages except the status line, warnings and errors\n"
 "     --silent    really no message at all (exit code determines success)\n"
 "\n"
-"The first file '<dimacs>' is supposed a formula in DIMACS format\n"
-"and the second file '<solution>' should have the SAT competition\n"
+"The first file '<dimacs>' is supposed to be a formula in DIMACS format\n"
+"and the second '<solution>' file should have the SAT competition\n"
 "output format, with comment lines 'c', the status line 's' and\n"
-"potentially several 'v' lines.\n"
+"potentially several 'v' lines.
 "\n"
 "If they are compressed, i.e., they a '.gz', '.xz', '.bz2' file\n"
 "name suffix, then the tools tries to open them through a pipe\n"
@@ -23,6 +23,15 @@ static const char * usage =
 "If checking succeeds the program returns with exit code '0' and\n"
 "prints the line 's MODEL_SATISFIES_FORMULA' on '<stdout>'.  Errors\n"
 "are reported on '<stderr>' and lead to an non-zero exit code.\n"
+"Only 's SATISFIABLE' is supported as status line and other status\n"
+"lines, e.g., 's UNSATISFIABLE' or 's UNKNOWN' yield an error.\n"
+"\n"
+"By default the parsing and checking mode is more relaxed.  For instance\n"
+"more spaces and comments are allowed and also the 'p cnf ...' header line\n"
+"can have arbitrary values.  We further only require by default a partial\n"
+"model, i.e., not all variables need to occur in 'v' lines, as long they\n"
+"still satisfy each clause (a literal without value is treated as false).\n"
+"This can be changed by setting '--strict', '--complete', or '--pedantic'.\n"
 ;
 // clang-format on
 
