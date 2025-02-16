@@ -91,6 +91,7 @@ static void fatal(const char *, ...) __attribute__((format(printf, 1, 2)));
 
 static void err(size_t, const char *, ...)
     __attribute__((format(printf, 2, 3)));
+
 static void srr(size_t, const char *, ...)
     __attribute__((format(printf, 2, 3)));
 
@@ -356,7 +357,7 @@ static void parse_dimacs() {
         err(column, "end-of-file before header (empty file)");
     } else if (is_space(ch)) {
       if (strict)
-        srr(column, "expected 'c' or 'p' at start of line before header");
+        srr(column, "expected 'c' or 'p' at start of line");
     } else if (ch == 'c') {
       while ((ch = next_char()) != '\n')
         if (ch == EOF)

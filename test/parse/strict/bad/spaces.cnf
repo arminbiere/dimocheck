@@ -1,0 +1,9 @@
+c some comment at the strict position zero
+   comment to far to the right
+
+c above is an empty line
+
+      		   c spaces tabs
+
+
+p cnf 0 0

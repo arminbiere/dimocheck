@@ -1,4 +1,4 @@
-These are expected invalid files for relaxed parsing.
+These are expected invalid files for strict parsing.
 
 If you issue `make here` all the failing tests will be run,
 ignoring the failing exit code.  This allows to step through
