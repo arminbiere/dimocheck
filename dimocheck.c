@@ -467,10 +467,12 @@ static void parse_dimacs() {
   }
   msg("parsed header 'p cnf %zu %zu'", specified_variables, specified_clauses);
   {
-    int last_lit = 0;
-    int ch = next_char();
     size_t clause_lineno = lineno;
     size_t clause_column = column;
+    int last_lit = 0;
+
+    int ch = next_char();
+
     for (;;) {
 
       size_t token = column;
