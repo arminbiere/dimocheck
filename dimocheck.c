@@ -639,6 +639,9 @@ static void parse_dimacs() {
       maximum_dimacs_variable);
 }
 
+static double average(double a, double b) { return b ? a / b : 0; }
+static double percent(double a, double b) { return average(100 * a, b); }
+
 static void parse_model() {
 
   init_parsing(model_path);
@@ -902,10 +905,12 @@ static void parse_model() {
   } // End of outer 'for' loop over 'c', 's' and 'v' parts.
 
   reset_parsing();
-  msg("parsed values of %zu variables with maximum index '%d'", parsed_values,
-      maximum_model_variable);
-  msg("set %zu positive and %zu negative values", positive_values,
-      negative_values);
+  size_t total_set = positive_values + negative_values;
+  msg("parsed %zu and set %zu values of variables with maximum index '%d'",
+      parsed_values, total_set, maximum_model_variable);
+  msg("set %zu positive %.2f%% and %zu negative values %.2f%%", positive_values,
+      percent(positive_values, total_set), negative_values,
+      percent(negative_values, total_set));
 }
 
 static void check_model() {
