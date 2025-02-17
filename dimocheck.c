@@ -191,7 +191,7 @@ static void srr(size_t token, const char *fmt, ...) {
 
 static void wrr(size_t token, const char *fmt, ...) {
   assert(last_char[0] != '\n' || lineno > 1);
-  if (verbosity == INT_MIN)
+  if (verbosity < 0)
     return;
   fprintf(stderr, "%s:%zu:%zu: warning: ", path,
           lineno - (last_char[0] == '\n'), token);
@@ -204,7 +204,7 @@ static void wrr(size_t token, const char *fmt, ...) {
 }
 
 static void wrn(const char *fmt, ...) {
-  if (verbosity == INT_MIN)
+  if (verbosity < 0)
     return;
   fprintf(stderr, "%s: warning: ", path);
   va_list ap;
