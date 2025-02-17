@@ -6,5 +6,5 @@ clean:
 format:
 	clang-format -i dimocheck.c
 test: dimocheck
-	+make -C test
+	@+make -s -C test
 .PHONY: all clean test
