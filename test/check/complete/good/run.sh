@@ -14,6 +14,6 @@ for cnf in $path/*.cnf
 do
   sol=$path/`basename $cnf .cnf`.sol
   [ -f $sol ] || die "could not find '$sol'"
-  args="$cnf $sol -q"
+  args="$cnf $sol -q -c"
   $binary $args 1>/dev/null || die "'dimocheck $args' failed"
 done

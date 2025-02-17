@@ -1,5 +1,5 @@
 #!/bin/sh
-path=test/parse/strict/good
+path=test/check/partial/good
 name=$path/run.sh
 die () {
   echo "$name: error: $*" 1>&2
