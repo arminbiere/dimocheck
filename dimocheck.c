@@ -513,11 +513,16 @@ static void parse_dimacs() {
             specified_variables, specified_clauses);
       ch = next_char();
     } else {
+      if (ch == 'c') {
+        while ((ch = next_char ()) != '\n' && ch != EOF)
+          ;
+      } else {
       if (!is_space(ch) && ch != EOF)
         err(column, "expected %s or %s after 'p cnf %zu %zu'", space_name(' '),
             space_name('\n'), specified_variables, specified_clauses);
       while (is_space(ch) && ch != '\n')
         ch = next_char();
+      }
       if (ch == EOF && specified_clauses)
         err(column, "end-of-file after 'p cnf %zu %zu'", specified_variables,
             specified_clauses);
