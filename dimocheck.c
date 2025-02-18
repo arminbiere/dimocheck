@@ -798,10 +798,8 @@ static void parse_model(void) {
       if (!status_lines++)
         first_status_line = start_of_status_line;
 
-      if (ch != EOF) {
-        assert(ch == '\n');
+      if (ch == '\n')
         ch = next_char();
-      }
       continue; // With outer 'for' loop.
     }
 
@@ -1040,7 +1038,7 @@ static void check_model(void) {
     }
     if (satisfied)
       continue;
-    fprintf(stderr, "%s:%zu:%zu: fatal error: clause[%zu] unsatisfied:\n",
+    fprintf(stderr, "%s:%zu:%zu: error: clause[%zu] unsatisfied:\n",
             dimacs_path, c->lineno, c->column, p - clauses.begin + 1);
     for (q = c->literals; q != end_literals; q++)
       fprintf(stderr, "%d ", *q);

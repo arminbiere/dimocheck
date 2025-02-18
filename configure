@@ -9,6 +9,7 @@ usage: configure [ <option> ... ]
 -s | --symbols   compile with symbols (default for '-g')
 -o | --optimize  compile with optimization (default for '-r')
 -c | --check     compile with assertion checking (default for '-g')
+   | --coverage  compile to produce coverage information
 EOF
 }
 die () {
@@ -23,6 +24,7 @@ release=yes
 check=undefined
 symbols=undefined
 optimize=undefined
+coverage=no
 while [ $# -gt 0 ]
 do
   case "$1" in
@@ -32,6 +34,7 @@ do
     -o | --optimize) optimize=yes;;
     -s | --symbols) symbols=yes;;
     -c | --check) check=yes;;
+    --coverage) coverage=yes;;
     *) die "invalid option '$1' (try '-h')";;
   esac
   shift
@@ -45,6 +48,7 @@ msg "Version '$VERSION'"
 COMPILE="gcc -Wall"
 [ $symbols = yes ] && COMPILE="$COMPILE -g"
 [ $optimize = yes ] && COMPILE="$COMPILE -O3"
+[ $coverage = yes ] && COMPILE="$COMPILE -ftest-coverage -fprofile-arcs"
 [ $check = no ] && COMPILE="$COMPILE -DNDEBUG"
 msg "Compiling with '$COMPILE'"
 rm -f config.h
