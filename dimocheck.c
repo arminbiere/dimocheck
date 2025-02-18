@@ -1046,7 +1046,6 @@ static void check_model(void) {
       fprintf(stderr, "%d ", *q);
     fputs("0\n", stderr);
     fflush(stderr);
-    abort();
     exit(1);
   }
   msg("checked all %zu clauses to be satisfied by model", parsed_clauses);
