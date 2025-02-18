@@ -215,15 +215,15 @@ static void wrn(const char *fmt, ...) {
   fflush(stderr);
 }
 
-static bool full_literals() { return literals.end == literals.allocated; }
+static bool full_literals(void) { return literals.end == literals.allocated; }
 
-static size_t size_literals() { return literals.end - literals.begin; }
+static size_t size_literals(void) { return literals.end - literals.begin; }
 
-static size_t capacity_literals() {
+static size_t capacity_literals(void) {
   return literals.allocated - literals.begin;
 }
 
-static void enlarge_literals() {
+static void enlarge_literals(void) {
   const size_t old_capacity = capacity_literals();
   const size_t new_capacity = old_capacity ? 2 * old_capacity : 1;
   literals.begin =
@@ -242,13 +242,15 @@ static void push_literal(int lit) {
   *literals.end++ = lit;
 }
 
-static void clear_literals() { literals.end = literals.begin; }
+static void clear_literals(void) { literals.end = literals.begin; }
 
-static bool full_clauses() { return clauses.end == clauses.allocated; }
+static bool full_clauses(void) { return clauses.end == clauses.allocated; }
 
-static size_t capacity_clauses() { return clauses.allocated - clauses.begin; }
+static size_t capacity_clauses(void) {
+  return clauses.allocated - clauses.begin;
+}
 
-static void enlarge_clauses() {
+static void enlarge_clauses(void) {
   const size_t old_capacity = capacity_clauses();
   const size_t new_capacity = old_capacity ? 2 * old_capacity : 1;
   clauses.begin = realloc(clauses.begin, new_capacity * sizeof *clauses.begin);
@@ -341,7 +343,7 @@ static void init_parsing(const char *p) {
   charno = 0;
 }
 
-static void reset_parsing() {
+static void reset_parsing(void) {
   vrb("closing '%s'", path);
   if (close_file == 1)
     fclose(file);
@@ -349,7 +351,7 @@ static void reset_parsing() {
     pclose(file);
 }
 
-static int next_char() {
+static int next_char(void) {
   int res = getc(file);
   if (res == '\n')
     lineno++;
@@ -383,7 +385,7 @@ static const char *space_name(int ch) {
   return "new-line '\\n'";
 }
 
-static void parse_dimacs() {
+static void parse_dimacs(void) {
   init_parsing(dimacs_path);
   msg("parsing DIMACS '%s'", path);
   if (strict) {
@@ -514,14 +516,15 @@ static void parse_dimacs() {
       ch = next_char();
     } else {
       if (ch == 'c') {
-        while ((ch = next_char ()) != '\n' && ch != EOF)
+        while ((ch = next_char()) != '\n' && ch != EOF)
           ;
       } else {
-      if (!is_space(ch) && ch != EOF)
-        err(column, "expected %s or %s after 'p cnf %zu %zu'", space_name(' '),
-            space_name('\n'), specified_variables, specified_clauses);
-      while (is_space(ch) && ch != '\n')
-        ch = next_char();
+        if (!is_space(ch) && ch != EOF)
+          err(column, "expected %s or %s after 'p cnf %zu %zu'",
+              space_name(' '), space_name('\n'), specified_variables,
+              specified_clauses);
+        while (is_space(ch) && ch != '\n')
+          ch = next_char();
       }
       if (ch == EOF && specified_clauses)
         err(column, "end-of-file after 'p cnf %zu %zu'", specified_variables,
@@ -709,7 +712,7 @@ static void parse_dimacs() {
 static double average(double a, double b) { return b ? a / b : 0; }
 static double percent(double a, double b) { return average(100 * a, b); }
 
-static void parse_model() {
+static void parse_model(void) {
 
   init_parsing(model_path);
   msg("parsing model '%s'", path);
@@ -952,7 +955,7 @@ static void parse_model() {
               if (!is_space(ch))
                 err(column, "expected white-space after '%d'", lit);
               while (ch != '\n' && is_space(ch))
-                ch = next_char(ch);
+                ch = next_char();
               if (ch == '\n')
                 goto CONTINUE_IN_VLINE_AFTER_NEW_LINE;
             }
@@ -1009,7 +1012,7 @@ static void parse_model() {
       percent(negative_values, total_set));
 }
 
-static void check_model() {
+static void check_model(void) {
   msg("checking model to satisfy DIMACS formula");
   if (complete) {
     msg("checking completeness of model (due to '%s')", complete_option);
@@ -1054,7 +1057,7 @@ static void can_not_combine(const char *a, const char *b) {
     die("can not combine '%s' and '%s' (try '-h')", a, b);
 }
 
-size_t maximum_resident_set_size() {
+size_t maximum_resident_set_size(void) {
   size_t res = 0;
   struct rusage u;
   if (!getrusage(RUSAGE_SELF, &u)) {
@@ -1066,7 +1069,7 @@ size_t maximum_resident_set_size() {
   return res;
 }
 
-static double process_time() {
+static double process_time(void) {
   double res = 0;
   struct rusage u;
   if (!getrusage(RUSAGE_SELF, &u)) {
