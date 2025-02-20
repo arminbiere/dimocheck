@@ -1147,15 +1147,15 @@ int main(int argc, char **argv) {
   parse_dimacs();
   parse_model();
   check_model();
+  if (verbosity != INT_MIN) {
+    fputs("s MODEL_SATISFIES_FORMULA\n", stdout);
+    fflush(stdout);
+  }
   free(literals.begin);
   for (struct clause **p = clauses.begin; p != clauses.end; p++)
     free(*p);
   free(clauses.begin);
   free(values.begin);
-  if (verbosity != INT_MIN) {
-    fputs("s MODEL_SATISFIES_FORMULA\n", stdout);
-    fflush(stdout);
-  }
   if (verbosity >= 0) {
     size_t bytes = maximum_resident_set_size();
     if (bytes >= 1u << 30)
