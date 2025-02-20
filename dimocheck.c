@@ -2,7 +2,7 @@
 static const char * usage =
 "usage: dimocheck [ <option> ... ] <dimacs> <solution>\n"
 "\n"
-"-h | -help         print this command line option summary\n"
+"-h | --help        print this command line option summary\n"
 "-s | --strict      strict parsing (default is relaxed parsing)\n"
 "-c | --complete    require full models (default is partial model checking)\n"
 "-p | --pedantic    set both strict and complete mode\n"
