@@ -707,6 +707,12 @@ static void parse_dimacs(void) {
   reset_parsing();
   msg("parsed %zu clauses with maximum variable index '%d'", parsed_clauses,
       maximum_dimacs_variable);
+
+  if ((size_t) maximum_dimacs_variable < specified_variables) {
+    vrb ("maximum parsed variable '%d' smaller than specified variables '%zu'",
+         maximum_dimacs_variable, specified_variables);
+    maximum_dimacs_variable = specified_variables;
+  }
 }
 
 static double average(double a, double b) { return b ? a / b : 0; }
